@@ -1,0 +1,37 @@
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Toplanti.Business.HttpClients;
+using Toplanti.Core.Utilities.Helper;
+using Toplanti.Entities.Zoom;
+
+namespace Toplanti.WebAPI.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ZoomController : ControllerBase
+    {
+        private readonly IZoom _zoomApi;
+        private readonly ISsoApi _ssoApi;
+
+        public ZoomController(IZoom zoomApi, ISsoApi ssoApi)
+        {
+            _zoomApi = zoomApi;
+            _ssoApi = ssoApi;
+        }
+
+        [HttpGet("centerperson")]
+        public ActionResult GetCenterPerson()
+        {
+            var userId = new UserCookie().UserId();
+            var result = _ssoApi.Person(userId);
+            return Ok(result);
+        }
+
+        [HttpPost("createzoommeeting")]
+        public ActionResult CreateZoomMeeting([FromQuery] ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest)
+        {
+            var result = _zoomApi.CreateZoomMeeting(zoomAuthRequest, zoomCreateRequest);
+            return Ok(result);
+        }
+    }
+}
