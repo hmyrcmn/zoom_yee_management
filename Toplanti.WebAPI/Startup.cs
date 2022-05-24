@@ -65,8 +65,8 @@ namespace Toplanti.WebAPI
                     };
                     option.Cookie.HttpOnly = true;
                     option.Cookie.IsEssential = true;
-                    //option.Cookie.Domain = "yee.org.tr"; //canlý
-                    option.Cookie.Domain = "localhost";  //local
+                    option.Cookie.Domain = "yee.org.tr"; //canlý
+                    //option.Cookie.Domain = "localhost";  //local
                     option.ExpireTimeSpan = TimeSpan.FromDays(10);
                 });
 
@@ -144,6 +144,11 @@ namespace Toplanti.WebAPI
                 app.UseDeveloperExceptionPage();
                 app.UseSwagger();
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Toplanti.WebAPI v1"));
+            }
+
+            if (!env.IsDevelopment()) // publish olmuþsa çalýþýr, yani release modda silmeye gerek yok
+            {
+                app.UseSpaStaticFiles();
             }
 
             app.ConfigureCustomExceptionMiddleware();

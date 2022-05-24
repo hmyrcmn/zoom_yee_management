@@ -8,7 +8,7 @@ namespace DataAccess.EntityFramework.Contexts
     {
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(@"Server=(localdb)\mssqllocaldb;Database=Toplanti;Trusted_Connection=true");
+            //optionsBuilder.UseSqlServer(@"Server=(localdb)\mssqllocaldb;Database=Toplanti;Trusted_Connection=true");
         }
 
     }

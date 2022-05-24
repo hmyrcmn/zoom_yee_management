@@ -8,13 +8,11 @@ namespace Core.Utilities.Security.JWT
     public class JwtHelper : ITokenHelper
     {
         public IConfiguration Configuration { get; }
-        private TokenOptions _tokenOptions;
         private TokenOptions _zoomTokenOptions;
         private DateTime _accessTokenExpiration;
         public JwtHelper(IConfiguration configuration)
         {
             Configuration = configuration;
-            _tokenOptions = Configuration.GetSection("TokenOptions").Get<TokenOptions>();
             _zoomTokenOptions = Configuration.GetSection("TokenZoom").Get<TokenOptions>();
         }
 
@@ -43,5 +41,6 @@ namespace Core.Utilities.Security.JWT
                 Expiration = _accessTokenExpiration
             };
         }
+
     }
 }

@@ -1,7 +1,4 @@
-﻿
-
-
-using Core.Utilities.Results;
+﻿using Core.Utilities.Results;
 using Core.Utilities.Security.JWT;
 using Newtonsoft.Json;
 using System;
