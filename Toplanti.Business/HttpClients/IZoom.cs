@@ -11,5 +11,6 @@ namespace Toplanti.Business.HttpClients
     public interface IZoom
     {
         IDataResult<ZoomCreatedResponse> CreateZoomMeeting(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest);
+        public IResult DeleteZoomMeeting(double meetingId);
     }
 }

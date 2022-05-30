@@ -5,6 +5,7 @@ using System;
 using System.Net.Http;
 using System.Net.Http.Json;
 using Toplanti.Business.Constants;
+using Toplanti.Business.Helpers;
 using Toplanti.Core.Utilities.Helper;
 using Toplanti.Entities.Zoom;
 
@@ -14,33 +15,36 @@ namespace Toplanti.Business.HttpClients
     {
         public string APIName = "ZoomApi";
         public string BASE_API_URL = "https://api.zoom.us/v2/";
-        //public string AUTH_API_URL = "https://zoom.us/oauth/token/";
-        //public string Client_Id = "rE9mNzJSn643cUmx2u6NA";
-        //public string Client_Secret = "SvzAecPOfRkNUa5uGUgKMo1aGCrvpc0T";
-
         private readonly ISsoApi _ssoApi;
         private IHttpClientFactory _httpClientFactory;
         private ITokenHelper _tokenHelper;
+        private IEmailHelper _emailHelper;
 
-        public Zoom(ISsoApi ssoApi, IHttpClientFactory httpClientFactory, ITokenHelper tokenHelper)
+        public Zoom(ISsoApi ssoApi, IHttpClientFactory httpClientFactory, ITokenHelper tokenHelper, IEmailHelper emailHelper)
         {
             _ssoApi = ssoApi;
             _httpClientFactory = httpClientFactory;
             _tokenHelper = tokenHelper;
+            _emailHelper = emailHelper;
         }
 
         public IDataResult<ZoomCreatedResponse> CreateZoomMeeting(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest)
         {
-            GetZoomUserList();
+            var userZoomId = "me";
 
             var userId = new UserCookie().UserId();
 
-            var userZoomId = "me";
+            var personEmail = _ssoApi.GetEmailByUserId(userId).Email;
 
-            var centerPersonZoomId = _ssoApi.Person(userId)?.ZoomId;
-            if (centerPersonZoomId != null)
+            var returnedUserZoomId = GetZoomUserList(personEmail);
+
+            if (returnedUserZoomId == "")
             {
-                userZoomId = centerPersonZoomId;
+                personEmail = "sahibiemail";
+            }
+            else
+            {
+                userZoomId = returnedUserZoomId;
             }
 
             ZoomCreatedResponse zoomCreatedResponse = new ZoomCreatedResponse();
@@ -63,7 +67,14 @@ namespace Toplanti.Business.HttpClients
                 return new ErrorDataResult<ZoomCreatedResponse>(zoomCreatedResponse, Messages.ZoomCreateError);
             }
 
+            HttpResponseMessage userResponse = client.GetAsync(BASE_API_URL + "users/" + userZoomId).Result;
+
+            var zoomUser = JsonConvert.DeserializeObject<ZoomUsers>(userResponse.Content.ReadAsStringAsync().Result);
+
+            _emailHelper.OpenedZoom(personEmail, userZoomId, zoomUser.type);
+
             return new SuccessDataResult<ZoomCreatedResponse>(zoomCreatedResponse, Messages.ZoomCreated);
+
         }
 
         public IDataResult<AccessToken> CreateZoomJwtToken()
@@ -73,64 +84,71 @@ namespace Toplanti.Business.HttpClients
             return new SuccessDataResult<AccessToken>(jwtToken, Messages.AccessTokenCreated);
         }
 
-        public IResult GetZoomUserList()
+        public string GetZoomUserList(string personEmail)
         {
-            var userId = new UserCookie().UserId();
+            var zoomId = "";
+
+            ZoomUserList zoomUsers = new ZoomUserList();
 
             var jwtToken = _tokenHelper.CreateZoomToken();
 
             var client = _httpClientFactory.CreateClient(APIName);
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
 
-            var person = _ssoApi.GetEmailByUserId(userId);
-
-            HttpResponseMessage response = client.GetAsync(BASE_API_URL + "users?page_number=0&page_size=20000").Result;
+            HttpResponseMessage response = client.GetAsync(BASE_API_URL + "users?page_number=0&page_size=200000").Result;
 
             if (response.IsSuccessStatusCode)
             {
-                var zoomUsers = JsonConvert.DeserializeObject<ZoomUserList>(response.Content.ReadAsStringAsync().Result);
+                zoomUsers = JsonConvert.DeserializeObject<ZoomUserList>(response.Content.ReadAsStringAsync().Result);
 
                 if (zoomUsers.users != null)
                     foreach (var zmUser in zoomUsers.users)
                     {
                         var ssoUser = _ssoApi.GetUserOnlyEmail(zmUser.email);
-
                         if (ssoUser != null)
                         {
-                            HttpResponseMessage userMeetings = client.GetAsync(BASE_API_URL + "users/" + zmUser.id + "meetings").Result;
+                            HttpResponseMessage userMeetings = client.GetAsync(BASE_API_URL + "users/" + zmUser.id + "/meetings?page_size=99999&type=upcoming").Result;
                             var userMeetingList = JsonConvert.DeserializeObject<ZoomUserList>(userMeetings.Content.ReadAsStringAsync().Result);
 
                             var isDeleteableUser = true;
 
                             if (userMeetingList.meetings != null)
-                                foreach (var userMeeting in userMeetingList.meetings)
-                                {
-                                    if (userMeeting.start_time.AddHours(4) > DateTime.Now)
-                                    {
-                                        isDeleteableUser = false;
-                                    }
-                                }
-                            if (isDeleteableUser && zmUser.type != 1 && zmUser.email != person.Email)
+                                isDeleteableUser = userMeetingList.meetings.Count < 1;
+
+                            if (isDeleteableUser && zmUser.type != 1 && zmUser.email != personEmail)
                             {
                                 zmUser.type = 1;
                                 HttpContent content = JsonContent.Create(zmUser);
-                                client.PatchAsync(BASE_API_URL + "users/" + zmUser.id, content);
+                                HttpResponseMessage patchUser = client.PatchAsync(BASE_API_URL + "users/" + zmUser.id, content).Result;
                             }
-                        }
 
-                        if (zmUser.email == person.Email)
-                        {
-                            zmUser.type = 2;
-                            HttpContent content = JsonContent.Create(zmUser);
-                            client.PatchAsync(BASE_API_URL + "users/" + zmUser.id, content);
+                            if (zmUser.email == personEmail)
+                            {
+                                zoomId = zmUser.id;
+                                zmUser.type = 2;
+                                HttpContent content = JsonContent.Create(zmUser);
+                                HttpResponseMessage patchUser = client.PatchAsync(BASE_API_URL + "users/" + zmUser.id, content).Result;
+                            }
                         }
                     }
             }
-            else
+            return zoomId;
+        }
+
+        public IResult DeleteZoomMeeting(double meetingId)
+        {
+            var jwtToken = _tokenHelper.CreateZoomToken();
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            HttpResponseMessage response = client.DeleteAsync(BASE_API_URL + "meetings/" + meetingId).Result;
+
+            if (response.IsSuccessStatusCode)
             {
-                return new ErrorResult(Messages.ZoomCreateError);
+                return new SuccessResult(Messages.ZoomDeleted);
             }
-            return new SuccessResult(Messages.ZoomCreated);
+
+            return new ErrorResult(Messages.ZoomDeleteError);
         }
     }
 }

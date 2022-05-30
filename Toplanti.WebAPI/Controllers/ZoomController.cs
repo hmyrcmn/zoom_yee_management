@@ -33,5 +33,12 @@ namespace Toplanti.WebAPI.Controllers
             var result = _zoomApi.CreateZoomMeeting(zoomAuthRequest, zoomCreateRequest);
             return Ok(result);
         }
+
+        [HttpDelete("deleteZoomMeeting")]
+        public ActionResult DeleteZoomMeeting([FromQuery] double meetingId)
+        {
+            var result = _zoomApi.DeleteZoomMeeting(meetingId);
+            return Ok(result);
+        }
     }
 }
