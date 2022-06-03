@@ -11,5 +11,6 @@ namespace Toplanti.Entities.Zoom
     {
         public IList<ZoomUsers> users { get; set; }
         public IList<UserMeetings> meetings { get; set; }
+        public IList<Participants> participants { get; set; }
     }
 }

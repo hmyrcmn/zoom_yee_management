@@ -12,6 +12,7 @@ namespace Toplanti.Entities.Zoom
         public string id { get; set; }
         public string host_id { get; set; }
         public string topic { get; set; }
+        public string agenda { get; set; }
         public string type { get; set; }
         public DateTime start_time { get; set; }
         public DateTime created_at { get; set; }

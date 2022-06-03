@@ -49,5 +49,10 @@ namespace Core.Extensisons
         {
             return claimsPrincipal?.RoleName(ClaimTypes.Name);
         }
+
+        public static string Email(this ClaimsPrincipal claimsPrincipal)
+        {
+            return claimsPrincipal?.FindAll("email").Select(x => x.Value).ToList().FirstOrDefault();
+        }
     }
 }

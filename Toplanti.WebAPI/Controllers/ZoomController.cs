@@ -34,6 +34,35 @@ namespace Toplanti.WebAPI.Controllers
             return Ok(result);
         }
 
+        [HttpGet("usermeetings")]
+        public ActionResult GetUserZoomMeetings()
+        {
+            var result = _zoomApi.GetUserMeetingList();
+            return Ok(result);
+        }
+
+
+        [HttpGet("meetingdetails")]
+        public ActionResult GetMeetingDetails([FromQuery] string meetingId)
+        {
+            var result = _zoomApi.GetMeetingDetails(meetingId);
+            return Ok(result);
+        }
+
+        [HttpGet("meetingparticipants")]
+        public ActionResult GetMeetingParticipants([FromQuery] string meetingId)
+        {
+            var result = _zoomApi.GetMeetingParticipants(meetingId);
+            return Ok(result);
+        }
+
+        [HttpGet("pastmeetingdetails")]
+        public ActionResult GetPastMeetingDetails([FromQuery] string meetingId)
+        {
+            var result = _zoomApi.GetPastMeetingDetails(meetingId);
+            return Ok(result);
+        }
+
         [HttpDelete("deleteZoomMeeting")]
         public ActionResult DeleteZoomMeeting([FromQuery] double meetingId)
         {

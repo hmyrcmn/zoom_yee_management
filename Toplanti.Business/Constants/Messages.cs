@@ -17,5 +17,11 @@ namespace Toplanti.Business.Constants
 
         public static string ZoomDeleteError = "Zoom Toplantısı Silinirken Hata!";
         public static string ZoomDeleted = "Zoom Toplantısı Silindi.";
+
+        public static string UserZoomMeetingsListed = "Toplantılarınız Listelendi.";
+        public static string UserZoomMeetingsListedError = "Toplantılarınız Listelenemedi.";
+
+        public static string PastMeetingDetailsListed = "Toplantı bilgileri getirildi.";
+        public static string PastMeetingDetailsError = "Toplantı bilgileri getirilirken hata.";
     }
 }

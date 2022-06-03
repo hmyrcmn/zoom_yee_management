@@ -1,7 +1,8 @@
 ﻿using Core.Utilities.Results;
 using Core.Utilities.Security.JWT;
 using Newtonsoft.Json;
-using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using Toplanti.Business.Constants;
@@ -102,7 +103,7 @@ namespace Toplanti.Business.HttpClients
                 zoomUsers = JsonConvert.DeserializeObject<ZoomUserList>(response.Content.ReadAsStringAsync().Result);
 
                 if (zoomUsers.users != null)
-                    foreach (var zmUser in zoomUsers.users)
+                    foreach (var zmUser in zoomUsers.users.Where(s => s.type == 2))
                     {
                         var ssoUser = _ssoApi.GetUserOnlyEmail(zmUser.email);
                         if (ssoUser != null)
@@ -149,6 +150,123 @@ namespace Toplanti.Business.HttpClients
             }
 
             return new ErrorResult(Messages.ZoomDeleteError);
+        }
+
+        public IDataResult<List<UserMeetings>> GetUserMeetingList()
+        {
+            List<UserMeetings> userMeetings = new List<UserMeetings>();
+
+            var userEmail = new UserCookie().Email();
+
+            var zoomId = "";
+
+            ZoomUserList zoomUsers = new ZoomUserList();
+
+            var jwtToken = _tokenHelper.CreateZoomToken();
+
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            HttpResponseMessage zoomUserListResponse = client.GetAsync(BASE_API_URL + "users?page_number=0&page_size=200000").Result;
+
+            if (zoomUserListResponse.IsSuccessStatusCode)
+            {
+                zoomUsers = JsonConvert.DeserializeObject<ZoomUserList>(zoomUserListResponse.Content.ReadAsStringAsync().Result);
+
+                if (zoomUsers.users != null)
+                {
+                    zoomId = zoomUsers.users.FirstOrDefault(s => s.email == userEmail)?.id;
+                    if (zoomId != "" && zoomId != null)
+                    {
+                        HttpResponseMessage userMeetingsResponse = client.GetAsync(BASE_API_URL + "users/" + zoomId + "/meetings?page_size=99999999").Result;
+                        if (userMeetingsResponse.IsSuccessStatusCode)
+                        {
+                            userMeetings = JsonConvert.DeserializeObject<ZoomUserList>(userMeetingsResponse.Content.ReadAsStringAsync().Result).meetings.ToList().OrderByDescending(s => s.start_time).ToList();
+
+                        }
+                        else
+                        {
+                            return new ErrorDataResult<List<UserMeetings>>(userMeetings, Messages.UserZoomMeetingsListed);
+
+                        }
+                    }
+                }
+            }
+            else
+            {
+                return new ErrorDataResult<List<UserMeetings>>(userMeetings, Messages.UserZoomMeetingsListed);
+            }
+
+            return new SuccessDataResult<List<UserMeetings>>(userMeetings, Messages.UserZoomMeetingsListed);
+        }
+
+        public IDataResult<PastMeetingDetails> GetPastMeetingDetails(string meetingId)
+        {
+            PastMeetingDetails pastMeetingDetails = null;
+
+            var jwtToken = _tokenHelper.CreateZoomToken();
+
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "past_meetings/" + meetingId).Result;
+
+            if (pastMeetingDetailsResponse.IsSuccessStatusCode)
+            {
+                pastMeetingDetails = JsonConvert.DeserializeObject<PastMeetingDetails>(pastMeetingDetailsResponse.Content.ReadAsStringAsync().Result);
+            }
+            else
+            {
+                return new ErrorDataResult<PastMeetingDetails>(pastMeetingDetails, Messages.PastMeetingDetailsError);
+            }
+
+            return new SuccessDataResult<PastMeetingDetails>(pastMeetingDetails, Messages.PastMeetingDetailsListed);
+        }
+
+        public IDataResult<ZoomCreatedResponse> GetMeetingDetails(string meetingId)
+        {
+            ZoomCreatedResponse meetingDetails = null;
+
+            var jwtToken = _tokenHelper.CreateZoomToken();
+
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "meetings/" + meetingId).Result;
+
+            if (pastMeetingDetailsResponse.IsSuccessStatusCode)
+            {
+                meetingDetails = JsonConvert.DeserializeObject<ZoomCreatedResponse>(pastMeetingDetailsResponse.Content.ReadAsStringAsync().Result);
+            }
+            else
+            {
+                return new ErrorDataResult<ZoomCreatedResponse>(meetingDetails, Messages.PastMeetingDetailsError);
+            }
+
+            return new SuccessDataResult<ZoomCreatedResponse>(meetingDetails, Messages.PastMeetingDetailsListed);
+        }
+
+        public IDataResult<List<Participants>> GetMeetingParticipants(string meetingId)
+        {
+            ZoomUserList zoomUsers = new ZoomUserList();
+
+            var jwtToken = _tokenHelper.CreateZoomToken();
+
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "past_meetings/" + meetingId + "/participants?page_number=0&page_size=200000").Result;
+
+            if (pastMeetingDetailsResponse.IsSuccessStatusCode)
+            {
+                zoomUsers = JsonConvert.DeserializeObject<ZoomUserList>(pastMeetingDetailsResponse.Content.ReadAsStringAsync().Result);
+            }
+            else
+            {
+                return new ErrorDataResult<List<Participants>>(new List<Participants>(), Messages.PastMeetingDetailsError);
+            }
+
+            return new SuccessDataResult<List<Participants>>(zoomUsers.participants.GroupBy(x => x.name).Select(y => y.First()).ToList(), Messages.PastMeetingDetailsListed);
         }
     }
 }

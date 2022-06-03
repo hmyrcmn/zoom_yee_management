@@ -12,5 +12,9 @@ namespace Toplanti.Business.HttpClients
     {
         IDataResult<ZoomCreatedResponse> CreateZoomMeeting(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest);
         public IResult DeleteZoomMeeting(double meetingId);
+        public IDataResult<List<UserMeetings>> GetUserMeetingList();
+        public IDataResult<PastMeetingDetails> GetPastMeetingDetails(string meetingId);
+        public IDataResult<ZoomCreatedResponse> GetMeetingDetails(string meetingId);
+        public IDataResult<List<Participants>> GetMeetingParticipants(string meetingId);
     }
 }
