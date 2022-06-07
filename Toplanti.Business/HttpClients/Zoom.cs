@@ -1,6 +1,7 @@
 ﻿using Core.Utilities.Results;
 using Core.Utilities.Security.JWT;
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -102,6 +103,8 @@ namespace Toplanti.Business.HttpClients
             {
                 zoomUsers = JsonConvert.DeserializeObject<ZoomUserList>(response.Content.ReadAsStringAsync().Result);
 
+                var loggedZoomUser = zoomUsers.users.FirstOrDefault(s => personEmail.Equals(s.email, StringComparison.CurrentCultureIgnoreCase));
+
                 if (zoomUsers.users != null)
                     foreach (var zmUser in zoomUsers.users.Where(s => s.type == 2))
                     {
@@ -116,22 +119,19 @@ namespace Toplanti.Business.HttpClients
                             if (userMeetingList.meetings != null)
                                 isDeleteableUser = userMeetingList.meetings.Count < 1;
 
-                            if (isDeleteableUser && zmUser.type != 1 && zmUser.email != personEmail)
+                            if (isDeleteableUser && zmUser.type != 1 && zmUser.email != personEmail && !zmUser.email.Equals("sevim.aktas@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
+                               && !zmUser.email.Equals("ozge.simsek@yee.org.tr", StringComparison.CurrentCultureIgnoreCase) && !zmUser.email.Equals("emin.kasikci@yee.org.tr", StringComparison.CurrentCultureIgnoreCase))
                             {
                                 zmUser.type = 1;
                                 HttpContent content = JsonContent.Create(zmUser);
                                 HttpResponseMessage patchUser = client.PatchAsync(BASE_API_URL + "users/" + zmUser.id, content).Result;
                             }
-
-                            if (zmUser.email == personEmail)
-                            {
-                                zoomId = zmUser.id;
-                                zmUser.type = 2;
-                                HttpContent content = JsonContent.Create(zmUser);
-                                HttpResponseMessage patchUser = client.PatchAsync(BASE_API_URL + "users/" + zmUser.id, content).Result;
-                            }
                         }
                     }
+                zoomId = loggedZoomUser.id;
+                loggedZoomUser.type = 2;
+                HttpContent patchContent = JsonContent.Create(loggedZoomUser);
+                HttpResponseMessage patchLoggedUser = client.PatchAsync(BASE_API_URL + "users/" + loggedZoomUser.id, patchContent).Result;
             }
             return zoomId;
         }
