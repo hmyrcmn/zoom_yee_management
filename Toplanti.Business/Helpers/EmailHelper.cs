@@ -15,6 +15,7 @@ namespace Toplanti.Business.Helpers
                 client.Authenticate("oys.bilgi@yee.org.tr", "07FB10924BFF74BD4DF6CBDE2ED01AF92036");
 
                 MimeMessage message = new MimeMessage();
+                message.Headers.Add("IsTransactional", "True");
 
                 MailboxAddress from = new MailboxAddress("Bilgilendirme", "oys.bilgi@yee.org.tr");
                 message.From.Add(from);

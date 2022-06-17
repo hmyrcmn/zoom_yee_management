@@ -106,6 +106,7 @@ namespace Toplanti.Business.HttpClients
                 var loggedZoomUser = zoomUsers.users.FirstOrDefault(s => personEmail.Equals(s.email, StringComparison.CurrentCultureIgnoreCase));
 
                 if (zoomUsers.users != null)
+                {
                     foreach (var zmUser in zoomUsers.users.Where(s => s.type == 2))
                     {
                         var ssoUser = _ssoApi.GetUserOnlyEmail(zmUser.email);
@@ -128,10 +129,14 @@ namespace Toplanti.Business.HttpClients
                             }
                         }
                     }
-                zoomId = loggedZoomUser.id;
-                loggedZoomUser.type = 2;
-                HttpContent patchContent = JsonContent.Create(loggedZoomUser);
-                HttpResponseMessage patchLoggedUser = client.PatchAsync(BASE_API_URL + "users/" + loggedZoomUser.id, patchContent).Result;
+                    if (loggedZoomUser != null)
+                    {
+                        zoomId = loggedZoomUser.id;
+                        loggedZoomUser.type = 2;
+                        HttpContent patchContent = JsonContent.Create(loggedZoomUser);
+                        HttpResponseMessage patchLoggedUser = client.PatchAsync(BASE_API_URL + "users/" + loggedZoomUser.id, patchContent).Result;
+                    }
+                }
             }
             return zoomId;
         }
