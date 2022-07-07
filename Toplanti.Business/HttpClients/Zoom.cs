@@ -1,4 +1,5 @@
-﻿using Core.Utilities.Results;
+﻿using Core.Entities.Concrete;
+using Core.Utilities.Results;
 using Core.Utilities.Security.JWT;
 using Newtonsoft.Json;
 using System;
@@ -9,6 +10,7 @@ using System.Net.Http.Json;
 using Toplanti.Business.Constants;
 using Toplanti.Business.Helpers;
 using Toplanti.Core.Utilities.Helper;
+using Toplanti.Entities.DTOs;
 using Toplanti.Entities.Zoom;
 
 namespace Toplanti.Business.HttpClients
@@ -38,11 +40,11 @@ namespace Toplanti.Business.HttpClients
 
             var personEmail = _ssoApi.GetEmailByUserId(userId).Email;
 
-            var returnedUserZoomId = GetZoomUserList(personEmail);
+            var returnedUserZoomId = GetUserZoomIdByEmail(personEmail);
 
             if (returnedUserZoomId == "")
             {
-                personEmail = "sahibiemail";
+                personEmail = personEmail + " ile sahibiemail";
             }
             else
             {
@@ -86,7 +88,7 @@ namespace Toplanti.Business.HttpClients
             return new SuccessDataResult<AccessToken>(jwtToken, Messages.AccessTokenCreated);
         }
 
-        public string GetZoomUserList(string personEmail)
+        public string GetUserZoomIdByEmail(string personEmail)
         {
             var zoomId = "";
 
@@ -272,6 +274,90 @@ namespace Toplanti.Business.HttpClients
             }
 
             return new SuccessDataResult<List<Participants>>(zoomUsers.participants.GroupBy(x => x.name).Select(y => y.First()).ToList(), Messages.PastMeetingDetailsListed);
+        }
+
+        public IDataResult<ZoomUserListWithCo> GetZoomUserList(BaseCo baseCo)
+        {
+            ZoomUserListWithCo zoomUserListWithCo = new ZoomUserListWithCo();
+
+            var jwtToken = _tokenHelper.CreateZoomToken();
+
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            HttpResponseMessage response = client.GetAsync(BASE_API_URL + "users?page_number=" + baseCo.PageIndex + 1 + "&page_size=" + baseCo.PageSize).Result;
+
+            if (response.IsSuccessStatusCode)
+            {
+                zoomUserListWithCo = JsonConvert.DeserializeObject<ZoomUserListWithCo>(response.Content.ReadAsStringAsync().Result);
+                return new SuccessDataResult<ZoomUserListWithCo>(zoomUserListWithCo, Messages.ProcessSuccess);
+            }
+            else
+            {
+                return new ErrorDataResult<ZoomUserListWithCo>(zoomUserListWithCo, Messages.ProcessFailed);
+            }
+        }
+
+        public IResult CreateZoomUser(ZoomUserCreatedResponse request)
+        {
+            StudentRegisterDto studentRegisterDto = new StudentRegisterDto()
+            {
+                Email = request.email,
+                FirstName = request.first_name,
+                LastName = request.last_name,
+                citiesId = 107139,
+            };
+
+            var result = _ssoApi.RegisterSsoMeeting(studentRegisterDto);
+
+            if (result)
+                return new SuccessResult(Messages.ProcessSuccess);
+            else
+                return new ErrorResult(Messages.ProcessSuccess);
+            //request.type = 1;
+            //request.password = request.email.Split("@")[0];
+            //ZoomCreateUserRequest zoomCreateUserRequest = new ZoomCreateUserRequest()
+            //{
+            //    action = "create",
+            //    user_info = request
+            //};
+
+            //ZoomUserCreatedResponse zoomCreatedResponse = new ZoomUserCreatedResponse();
+
+            //var jwtToken = _tokenHelper.CreateZoomToken();
+
+            //var client = _httpClientFactory.CreateClient(APIName);
+            //client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            //HttpContent content = JsonContent.Create(zoomCreateUserRequest);
+            //HttpResponseMessage response = client.PostAsync(BASE_API_URL + "users", content).Result;
+
+            //if (response.IsSuccessStatusCode)
+            //{
+            //    zoomCreatedResponse = JsonConvert.DeserializeObject<ZoomUserCreatedResponse>(response.Content.ReadAsStringAsync().Result);
+
+            //    UserStudentDto userStudentDto = new UserStudentDto()
+            //    {
+            //        Active = true,
+            //        AddedTime = DateTime.Now,
+            //        ChangedTime = DateTime.Now,
+            //        CitiesId = 107139,
+            //        Deleted = false,
+            //        Email = request.email,
+            //        FirstName = request.first_name,
+            //        LastName = request.last_name,
+            //        GenderId = 1,
+            //        NationalitysId = 150,
+            //    };
+
+            //    _ssoApi.AddUser(userStudentDto);
+            //}
+            //else
+            //{
+            //    return new ErrorDataResult<ZoomUserCreatedResponse>(zoomCreatedResponse, "Hata");
+            //}
+
+            //return new SuccessDataResult<ZoomUserCreatedResponse>(zoomCreatedResponse, "Oluşturuldu");
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Core.Utilities.Results;
 using Newtonsoft.Json;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Reflection;
 using Toplanti.Core.Utilities.Results;
 using Toplanti.Entities.DTOs;
@@ -66,6 +67,24 @@ namespace Toplanti.Business.HttpClients
                 personDto = JsonConvert.DeserializeObject<PersonDto>(response.Content.ReadAsStringAsync().Result);
             }
             return personDto;
+        }
+
+        public bool RegisterSsoMeeting(StudentRegisterDto studentRegisterDto)
+        {
+            var client = _httpClientFactory.CreateClient(APIName);
+
+            HttpContent content = JsonContent.Create(studentRegisterDto);
+
+            HttpResponseMessage response = client.PostAsync("api/zoom/registerssomeeting",content).Result;
+
+            if (response.IsSuccessStatusCode)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
     }
 }

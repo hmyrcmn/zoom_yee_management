@@ -15,5 +15,6 @@ namespace Toplanti.Business.HttpClients
         public CenterPersonDTO Person(int userId);
         public PersonDto GetUserOnlyEmail(string email);
         public PersonDto GetEmailByUserId(int id);
+        public bool RegisterSsoMeeting(StudentRegisterDto studentRegisterDto);
     }
 }

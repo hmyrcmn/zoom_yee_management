@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Core.Entities.Concrete;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Toplanti.Business.HttpClients;
 using Toplanti.Core.Utilities.Helper;
+using Toplanti.Entities.DTOs;
 using Toplanti.Entities.Zoom;
 
 namespace Toplanti.WebAPI.Controllers
@@ -67,6 +69,20 @@ namespace Toplanti.WebAPI.Controllers
         public ActionResult DeleteZoomMeeting([FromQuery] double meetingId)
         {
             var result = _zoomApi.DeleteZoomMeeting(meetingId);
+            return Ok(result);
+        }
+
+        [HttpGet("getzoomusers")]
+        public ActionResult GetZoomUserList([FromQuery] BaseCo baseCo)
+        {
+            var result = _zoomApi.GetZoomUserList(baseCo);
+            return Ok(result);
+        }
+
+        [HttpPost("createzoomuser")]
+        public ActionResult CreateZoomUser(ZoomUserCreatedResponse zoomCreateUserRequest)
+        {
+            var result = _zoomApi.CreateZoomUser(zoomCreateUserRequest);
             return Ok(result);
         }
     }

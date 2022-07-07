@@ -11,6 +11,9 @@ namespace Toplanti.Business.Constants
         public static string AccessTokenCreated = "Access token başarıyla oluşturuldu";
         public static string AuthorizationDenied = "Yetkiniz yok";
 
+        public static readonly string ProcessSuccess = "İşlem Başarılı";
+        public static readonly string ProcessFailed = "İşlem Başarısız";
+
         //Zoom
         public static string ZoomCreateError = "Zoom Toplantısı Oluşutulurken Hata!";
         public static string ZoomCreated = "Zoom Toplantısı Oluşutuldu.";
