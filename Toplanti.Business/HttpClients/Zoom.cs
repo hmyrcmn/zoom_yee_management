@@ -123,7 +123,10 @@ namespace Toplanti.Business.HttpClients
                                 isDeleteableUser = userMeetingList.meetings.Count < 1;
 
                             if (isDeleteableUser && zmUser.type != 1 && zmUser.email != personEmail && !zmUser.email.Equals("sevim.aktas@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
-                               && !zmUser.email.Equals("ozge.simsek@yee.org.tr", StringComparison.CurrentCultureIgnoreCase) && !zmUser.email.Equals("emin.kasikci@yee.org.tr", StringComparison.CurrentCultureIgnoreCase))
+                                && !zmUser.email.Equals("emin.kasikci@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
+                                && !zmUser.email.Equals("emrah.yuzuak@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
+                                && !zmUser.email.Equals("tunahan.cimen@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
+                               )
                             {
                                 zmUser.type = 1;
                                 HttpContent content = JsonContent.Create(zmUser);

@@ -116,12 +116,12 @@ namespace Toplanti.WebAPI
             });
             #endregion CORS_AYARLARI
 
-            //var ssoApi = Configuration.GetSection("SsoApi").Get<ApiSettings>();
-            //services.AddHttpClient(ssoApi.BaseAdressName, c =>
-            //{
-            //    c.BaseAddress = new Uri(ssoApi.BaseAdress);
-            //    c.DefaultRequestHeaders.Add(ssoApi.DefaultRequestHeadersName, ssoApi.DefaultRequestHeadersValue);
-            //});
+            var ssoApi = Configuration.GetSection("SsoApi").Get<ApiSettings>();
+            services.AddHttpClient(ssoApi.BaseAdressName, c =>
+            {
+                c.BaseAddress = new Uri(ssoApi.BaseAdress);
+                c.DefaultRequestHeaders.Add(ssoApi.DefaultRequestHeadersName, ssoApi.DefaultRequestHeadersValue);
+            });
 
 
             services.AddSpaStaticFiles(configuration =>
