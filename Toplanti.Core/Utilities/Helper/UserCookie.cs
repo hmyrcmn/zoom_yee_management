@@ -18,6 +18,10 @@ namespace Toplanti.Core.Utilities.Helper
             _httpContextAccessor = ServiceTool.ServiceProvider.GetService<IHttpContextAccessor>();
             string userId = _httpContextAccessor.HttpContext.User.UserId();
             int convertUserId = Convert.ToInt16(userId);
+            if (convertUserId == 0)
+            {
+                throw new UnauthorizedAccessException();
+            }
             return convertUserId;
         }
 
@@ -25,6 +29,10 @@ namespace Toplanti.Core.Utilities.Helper
         {
             _httpContextAccessor = ServiceTool.ServiceProvider.GetService<IHttpContextAccessor>();
             string roleName = _httpContextAccessor.HttpContext.User.RoleNameSingle();
+            if (roleName == null)
+            {
+                throw new UnauthorizedAccessException();
+            }
             return roleName;
         }
 
@@ -32,6 +40,10 @@ namespace Toplanti.Core.Utilities.Helper
         {
             _httpContextAccessor = ServiceTool.ServiceProvider.GetService<IHttpContextAccessor>();
             string email = _httpContextAccessor.HttpContext.User.Email();
+            if (email == null)
+            {
+                throw new UnauthorizedAccessException();
+            }
             return email;
         }
     }

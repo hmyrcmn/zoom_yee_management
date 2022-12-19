@@ -66,7 +66,6 @@ namespace Toplanti.WebAPI
                     option.Cookie.HttpOnly = true;
                     option.Cookie.IsEssential = true;
                     option.Cookie.Domain = "yee.org.tr"; //canlý
-                    //option.Cookie.Domain = "localhost";  //local
                     option.ExpireTimeSpan = TimeSpan.FromDays(10);
                 });
 

@@ -122,7 +122,8 @@ namespace Toplanti.Business.HttpClients
                             if (userMeetingList.meetings != null)
                                 isDeleteableUser = userMeetingList.meetings.Count < 1;
 
-                            if (isDeleteableUser && zmUser.type != 1 && zmUser.email != personEmail && !zmUser.email.Equals("sevim.aktas@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
+                            if (isDeleteableUser && zmUser.type != 1 && zmUser.email != personEmail
+                               && !zmUser.email.Equals("sevim.aktas@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
                                 && !zmUser.email.Equals("emin.kasikci@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
                                 && !zmUser.email.Equals("emrah.yuzuak@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
                                 && !zmUser.email.Equals("tunahan.cimen@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)

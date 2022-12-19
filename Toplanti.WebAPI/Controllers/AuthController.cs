@@ -54,7 +54,12 @@ namespace Toplanti.WebAPI.Controllers
         [HttpGet("userinfo")]
         public ActionResult UserInfo()
         {
-            return Ok(_authService.UserInfo());
+            var result = _authService.UserInfo();
+            if (result.Data == null)
+            {
+                return Unauthorized(result);
+            }
+            return Ok(result);
         }
     }
 }
