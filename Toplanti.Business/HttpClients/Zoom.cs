@@ -22,14 +22,14 @@ namespace Toplanti.Business.HttpClients
         private readonly ISsoApi _ssoApi;
         private IHttpClientFactory _httpClientFactory;
         private ITokenHelper _tokenHelper;
-        private IEmailHelper _emailHelper;
+        //private IEmailHelper _emailHelper;
 
-        public Zoom(ISsoApi ssoApi, IHttpClientFactory httpClientFactory, ITokenHelper tokenHelper, IEmailHelper emailHelper)
+        public Zoom(ISsoApi ssoApi, IHttpClientFactory httpClientFactory, ITokenHelper tokenHelper/*, IEmailHelper emailHelper*/)
         {
             _ssoApi = ssoApi;
             _httpClientFactory = httpClientFactory;
             _tokenHelper = tokenHelper;
-            _emailHelper = emailHelper;
+            //_emailHelper = emailHelper;
         }
 
         public IDataResult<ZoomCreatedResponse> CreateZoomMeeting(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest)
@@ -42,11 +42,7 @@ namespace Toplanti.Business.HttpClients
 
             var returnedUserZoomId = GetUserZoomIdByEmail(personEmail);
 
-            if (returnedUserZoomId == "")
-            {
-                personEmail = personEmail + " ile sahibiemail";
-            }
-            else
+            if (returnedUserZoomId != "")
             {
                 userZoomId = returnedUserZoomId;
             }
