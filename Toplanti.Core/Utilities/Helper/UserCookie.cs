@@ -17,7 +17,7 @@ namespace Toplanti.Core.Utilities.Helper
         {
             _httpContextAccessor = ServiceTool.ServiceProvider.GetService<IHttpContextAccessor>();
             string userId = _httpContextAccessor.HttpContext.User.UserId();
-            int convertUserId = Convert.ToInt16(userId);
+            int convertUserId = Convert.ToInt32(userId);
             if (convertUserId == 0)
             {
                 throw new UnauthorizedAccessException();

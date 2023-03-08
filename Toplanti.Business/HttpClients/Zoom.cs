@@ -71,11 +71,11 @@ namespace Toplanti.Business.HttpClients
                 return new ErrorDataResult<ZoomCreatedResponse>(zoomCreatedResponse, Messages.ZoomCreateError);
             }
 
-            HttpResponseMessage userResponse = client.GetAsync(BASE_API_URL + "users/" + userZoomId).Result;
+            //HttpResponseMessage userResponse = client.GetAsync(BASE_API_URL + "users/" + userZoomId).Result;
 
-            var zoomUser = JsonConvert.DeserializeObject<ZoomUsers>(userResponse.Content.ReadAsStringAsync().Result);
+            //var zoomUser = JsonConvert.DeserializeObject<ZoomUsers>(userResponse.Content.ReadAsStringAsync().Result);
 
-            _emailHelper.OpenedZoom(personEmail, userZoomId, zoomUser.type);
+            //_emailHelper.OpenedZoom(personEmail, userZoomId, zoomUser.type);
 
             return new SuccessDataResult<ZoomCreatedResponse>(zoomCreatedResponse, Messages.ZoomCreated);
 
