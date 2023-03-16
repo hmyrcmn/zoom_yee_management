@@ -26,5 +26,8 @@ namespace Toplanti.Business.Constants
 
         public static string PastMeetingDetailsListed = "Toplantı bilgileri getirildi.";
         public static string PastMeetingDetailsError = "Toplantı bilgileri getirilirken hata.";
+
+
+        public static string IsNotExistedUser = "Eposta adresinizi onaylamanız gerekmektedir.Zoom üzerinden gönderilmiş epostadaki adımları takip ediniz.";
     }
 }

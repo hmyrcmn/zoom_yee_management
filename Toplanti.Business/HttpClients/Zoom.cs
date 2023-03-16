@@ -2,6 +2,7 @@
 using Core.Utilities.Results;
 using Core.Utilities.Security.JWT;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -42,12 +43,16 @@ namespace Toplanti.Business.HttpClients
 
             var returnedUserZoomId = GetUserZoomIdByEmail(personEmail);
 
+            ZoomCreatedResponse zoomCreatedResponse = new ZoomCreatedResponse();
+
             if (returnedUserZoomId != "")
             {
                 userZoomId = returnedUserZoomId;
             }
-
-            ZoomCreatedResponse zoomCreatedResponse = new ZoomCreatedResponse();
+            else
+            {
+                return new ErrorDataResult<ZoomCreatedResponse>(null, Messages.IsNotExistedUser);
+            }
 
             var jwtToken = _tokenHelper.CreateZoomToken();
 
@@ -116,7 +121,7 @@ namespace Toplanti.Business.HttpClients
                             var isDeleteableUser = true;
 
                             if (userMeetingList.meetings != null)
-                                isDeleteableUser = userMeetingList.meetings.Count < 1;
+                                isDeleteableUser = userMeetingList.meetings.Where(s => s.start_time.Year != 1 && s.start_time <= DateTime.UtcNow.AddDays(7)).Count() < 1;
 
                             if (isDeleteableUser && zmUser.type != 1 && zmUser.email != personEmail
                                && !zmUser.email.Equals("sevim.aktas@yee.org.tr", StringComparison.CurrentCultureIgnoreCase)
@@ -359,5 +364,33 @@ namespace Toplanti.Business.HttpClients
 
             //return new SuccessDataResult<ZoomUserCreatedResponse>(zoomCreatedResponse, "Oluşturuldu");
         }
+
+        public IDataResult<bool> GetExistUser()
+        {
+            var email = new UserCookie().Email();
+            var result = GetIsExistUserByEmail(email);
+            return new SuccessDataResult<bool>(result);
+        }
+
+        private bool GetIsExistUserByEmail(string email)
+        {
+            bool result = false;
+            var jwtToken = _tokenHelper.CreateZoomToken();
+
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+
+            HttpResponseMessage response = client.GetAsync(BASE_API_URL + "users/email?email=" + email).GetAwaiter().GetResult();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var res = response.Content.ReadAsStringAsync().Result;
+                var dicRes = JsonConvert.DeserializeObject<Dictionary<string, bool>>(res);
+                dicRes.TryGetValue("existed_email", out result);
+            }
+
+            return result;
+        }
+
     }
 }

@@ -20,5 +20,7 @@ namespace Toplanti.Business.HttpClients
         public IDataResult<List<Participants>> GetMeetingParticipants(string meetingId);
         public IDataResult<ZoomUserListWithCo> GetZoomUserList(BaseCo baseCo);
         public IResult CreateZoomUser(ZoomUserCreatedResponse request);
+
+        public IDataResult<bool> GetExistUser();
     }
 }
