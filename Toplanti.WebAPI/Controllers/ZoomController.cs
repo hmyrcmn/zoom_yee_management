@@ -50,7 +50,6 @@ namespace Toplanti.WebAPI.Controllers
             return Ok(result);
         }
 
-
         [HttpGet("meetingdetails")]
         public ActionResult GetMeetingDetails([FromQuery] string meetingId)
         {
