@@ -12,6 +12,11 @@ namespace Toplanti.Business.HttpClients
 {
     public interface IZoom
     {
+        public Task<IDataResult<ZoomCreatedResponse>> CreateZoomMeetingNew(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest);
+        public Task<IResult> DeleteZoomMeetingNew(double meetingId);
+        public Task<IDataResult<PastMeetingDetails>> GetPastMeetingDetailsNew(string meetingId);
+        public Task<IDataResult<List<Participants>>> GetMeetingParticipantsNew(string meetingId);
+
         public IDataResult<ZoomCreatedResponse> CreateZoomMeeting(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest);
         public IResult DeleteZoomMeeting(double meetingId);
         public IDataResult<List<UserMeetings>> GetUserMeetingList();

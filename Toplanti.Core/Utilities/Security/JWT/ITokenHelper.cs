@@ -10,5 +10,6 @@ namespace Core.Utilities.Security.JWT
     public interface ITokenHelper
     {
         AccessToken CreateZoomToken();
+        Task<string> CreateAccessToken();
     }
 }

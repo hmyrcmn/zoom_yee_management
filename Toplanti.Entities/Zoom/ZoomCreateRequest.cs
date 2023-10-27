@@ -20,5 +20,25 @@ namespace Toplanti.Entities.Zoom
         public string topic { get; set; }
         public int type { get; set; }
         public int ClassId { get; set; }
+        public Settings settings { get; set; }
+    }
+
+    public class Settings
+    {
+        public bool host_video { get; set; } = true;
+        public bool participant_video { get; set; } = true;
+        public bool join_before_host { get; set; } = true;
+        public bool mute_upon_entry { get; set; } = true;
+        public breakout_room breakout_room { get; set; }
+        public Settings()
+        {
+            breakout_room = new breakout_room();
+        }
+    }
+
+    public class breakout_room
+    {
+        public bool enable { get; set; }=true;
     }
 }
+

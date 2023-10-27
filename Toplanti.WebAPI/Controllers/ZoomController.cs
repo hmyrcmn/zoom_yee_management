@@ -29,12 +29,38 @@ namespace Toplanti.WebAPI.Controllers
             return Ok(result);
         }
 
+        #region new
         [HttpPost("createzoommeeting")]
         public ActionResult CreateZoomMeeting([FromQuery] ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest)
         {
-            var result = _zoomApi.CreateZoomMeeting(zoomAuthRequest, zoomCreateRequest);
+            var result = _zoomApi.CreateZoomMeetingNew(zoomAuthRequest, zoomCreateRequest).Result;
             return Ok(result);
         }
+
+        [HttpGet("meetingparticipants")]
+        public ActionResult GetMeetingParticipants([FromQuery] string meetingId)
+        {
+            var result = _zoomApi.GetMeetingParticipantsNew(meetingId);
+            return Ok(result);
+        }
+
+        [HttpDelete("deleteZoomMeeting")]
+        public ActionResult DeleteZoomMeeting([FromQuery] double meetingId)
+        {
+            var result = _zoomApi.DeleteZoomMeetingNew(meetingId).Result;
+            return Ok(result);
+        }
+
+        [HttpGet("pastmeetingdetails")]
+        public ActionResult GetPastMeetingDetails([FromQuery] string meetingId)
+        {
+            var result = _zoomApi.GetPastMeetingDetailsNew(meetingId).Result;
+            return Ok(result);
+        }
+
+        #endregion
+
+
 
         [HttpGet("usermeetings")]
         public ActionResult GetUserZoomMeetings()
@@ -57,26 +83,37 @@ namespace Toplanti.WebAPI.Controllers
             return Ok(result);
         }
 
-        [HttpGet("meetingparticipants")]
-        public ActionResult GetMeetingParticipants([FromQuery] string meetingId)
+        #region Old Zoom
+
+        [HttpPost("createzoommeetingOld")]
+        public ActionResult CreateZoomMeetingOld([FromQuery] ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest)
+        {
+            var result = _zoomApi.CreateZoomMeeting(zoomAuthRequest, zoomCreateRequest);
+            return Ok(result);
+        }
+
+        [HttpGet("meetingparticipantsOld")]
+        public ActionResult GetMeetingParticipantsOld([FromQuery] string meetingId)
         {
             var result = _zoomApi.GetMeetingParticipants(meetingId);
             return Ok(result);
         }
 
-        [HttpGet("pastmeetingdetails")]
-        public ActionResult GetPastMeetingDetails([FromQuery] string meetingId)
+        [HttpGet("pastmeetingdetailsOld")]
+        public ActionResult GetPastMeetingDetailsOld([FromQuery] string meetingId)
         {
             var result = _zoomApi.GetPastMeetingDetails(meetingId);
             return Ok(result);
         }
 
-        [HttpDelete("deleteZoomMeeting")]
-        public ActionResult DeleteZoomMeeting([FromQuery] double meetingId)
+        [HttpDelete("deleteZoomMeetingOld")]
+        public ActionResult DeleteZoomMeetingOld([FromQuery] double meetingId)
         {
             var result = _zoomApi.DeleteZoomMeeting(meetingId);
             return Ok(result);
         }
+
+        #endregion
 
         [HttpGet("getzoomusers")]
         public ActionResult GetZoomUserList([FromQuery] BaseCo baseCo)

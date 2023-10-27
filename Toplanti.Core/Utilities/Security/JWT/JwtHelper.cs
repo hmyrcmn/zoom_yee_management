@@ -1,7 +1,11 @@
 ﻿using Core.Utilities.Security.Encrytion;
 using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json.Linq;
 using System;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace Core.Utilities.Security.JWT
 {
@@ -42,5 +46,26 @@ namespace Core.Utilities.Security.JWT
             };
         }
 
+        public async Task<string> CreateAccessToken()
+        {
+            var accountId = "JA-PkZ3iRl6j_WL1SbvuEQ";
+            var tokenRequestBody = $"grant_type=account_credentials&account_id={accountId}";
+            var tokenUrl = "https://zoom.us/oauth/token";
+
+            var clientId = "n15GtcK0R7udggtQQBY_Zw";
+            var clientSecret = "zl7d2TwmCTJ9YO5q0WQVkvt1gDXS7FYE";
+
+            var requestContent = new StringContent(tokenRequestBody, Encoding.UTF8, "application/x-www-form-urlencoded");
+
+            using var client = new HttpClient();
+            client.Timeout = TimeSpan.FromSeconds(10);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}")));
+
+            var response = await client.PostAsync(tokenUrl, requestContent);
+            var result = await response.Content.ReadAsStringAsync();
+            var accessToken = JObject.Parse(result)["access_token"].ToString();
+
+            return accessToken;
+        }
     }
 }

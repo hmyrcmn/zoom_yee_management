@@ -15,8 +15,8 @@ namespace Toplanti.Business.Constants
         public static readonly string ProcessFailed = "İşlem Başarısız";
 
         //Zoom
-        public static string ZoomCreateError = "Zoom Toplantısı Oluşutulurken Hata!";
-        public static string ZoomCreated = "Zoom Toplantısı Oluşutuldu.";
+        public static string ZoomCreateError = "Zoom Toplantısı Oluşturulurken Hata!";
+        public static string ZoomCreated = "Zoom Toplantısı Oluşturuldu.";
 
         public static string ZoomDeleteError = "Zoom Toplantısı Silinirken Hata!";
         public static string ZoomDeleted = "Zoom Toplantısı Silindi.";

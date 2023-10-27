@@ -14,7 +14,7 @@ namespace Toplanti.Entities.Zoom
         public int type { get; set; }
         public string topic { get; set; }
         public string user_name { get; set; }
-        public string user_email { get; set; }
+        public string host_email { get; set; }
         public DateTime start_time { get; set; }
         public DateTime end_time { get; set; }
         public int duration { get; set; }
@@ -22,5 +22,9 @@ namespace Toplanti.Entities.Zoom
         public int participants_count { get; set; }
         public string dept { get; set; }
         public string source { get; set; }
+
+        public string start_url {get;set;}
+        public string join_url { get;set;}
+
     }
 }

@@ -54,5 +54,16 @@ namespace Core.Extensisons
         {
             return claimsPrincipal?.FindAll("email").Select(x => x.Value).ToList().FirstOrDefault();
         }
+        public static string FirstName(this ClaimsPrincipal claimsPrincipal)
+        {
+            var result = claimsPrincipal?.FindAll("firstName")?.Select(x => x.Value).FirstOrDefault();
+            return result;
+        }
+
+        public static string LastName(this ClaimsPrincipal claimsPrincipal)
+        {
+            var result = claimsPrincipal?.FindAll("lastName")?.Select(x => x.Value).FirstOrDefault();
+            return result;
+        }
     }
 }

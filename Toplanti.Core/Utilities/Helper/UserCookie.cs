@@ -46,5 +46,18 @@ namespace Toplanti.Core.Utilities.Helper
             }
             return email;
         }
+
+        public string FirstName()
+        {
+            _httpContextAccessor = ServiceTool.ServiceProvider.GetService<IHttpContextAccessor>();
+            string firstName = _httpContextAccessor.HttpContext.User.FirstName();
+            return firstName;
+        }
+        public string LastName()
+        {
+            _httpContextAccessor = ServiceTool.ServiceProvider.GetService<IHttpContextAccessor>();
+            string lastName = _httpContextAccessor.HttpContext.User.LastName();
+            return lastName;
+        }
     }
 }
