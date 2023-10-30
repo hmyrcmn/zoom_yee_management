@@ -145,7 +145,7 @@ namespace Toplanti.Business.HttpClients
             var client = _httpClientFactory.CreateClient(APIName);
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 
-            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "past_meetings/" + meetingUUID + "/participants?page_size=30").Result;
+            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "past_meetings/" + meetingUUID + "/participants?page_size=300").Result;
 
             if (pastMeetingDetailsResponse.IsSuccessStatusCode)
             {
