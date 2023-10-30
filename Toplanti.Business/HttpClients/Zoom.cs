@@ -98,12 +98,11 @@ namespace Toplanti.Business.HttpClients
             var client = _httpClientFactory.CreateClient(APIName);
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 
-            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "meetings/" + meetingId).Result;
+            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "past_meetings/" + meetingId).Result;
 
             if (pastMeetingDetailsResponse.IsSuccessStatusCode)
             {
                 pastMeetingDetails = JsonConvert.DeserializeObject<PastMeetingDetails>(pastMeetingDetailsResponse.Content.ReadAsStringAsync().Result);
-                pastMeetingDetails.user_name = new UserCookie().FirstName() + " " + new UserCookie().LastName();
             }
             else
             {
@@ -113,7 +112,31 @@ namespace Toplanti.Business.HttpClients
             return new SuccessDataResult<PastMeetingDetails>(pastMeetingDetails, Messages.PastMeetingDetailsListed);
         }
 
-        public async Task<IDataResult<List<Participants>>> GetMeetingParticipantsNew(string meetingId)
+        public async Task<IDataResult<PastMeetingDetails>> GetMeetingDetailsNew(string meetingId)
+        {
+            PastMeetingDetails meetingDetails = null;
+
+            var accessToken = await _tokenHelper.CreateAccessToken();
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "meetings/" + meetingId).Result;
+
+            if (pastMeetingDetailsResponse.IsSuccessStatusCode)
+            {
+                meetingDetails = JsonConvert.DeserializeObject<PastMeetingDetails>(pastMeetingDetailsResponse.Content.ReadAsStringAsync().Result);
+
+               // meetingDetails.user_name = new UserCookie().FirstName() + " " + new UserCookie().LastName();
+            }
+            else
+            {
+                return new ErrorDataResult<PastMeetingDetails>(meetingDetails, Messages.PastMeetingDetailsError);
+            }
+
+            return new SuccessDataResult<PastMeetingDetails>(meetingDetails, Messages.PastMeetingDetailsListed);
+        }
+
+        public async Task<IDataResult<List<Participants>>> GetMeetingParticipantsNew(string meetingUUID)
         {
             ZoomUserList zoomUsers = new ZoomUserList();
 
@@ -121,11 +144,7 @@ namespace Toplanti.Business.HttpClients
             var client = _httpClientFactory.CreateClient(APIName);
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 
-            //nextpageToken 
-            //participant için daha sonra bakılacak pagination tokenı için araştırmalar devam edecek.
-            HttpResponseMessage nextPageToken = client.GetAsync(BASE_API_URL + ":" + meetingId + "/report/participants").Result;
-
-            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "metrics/meetings/:" + meetingId + "/participants").Result;
+            HttpResponseMessage pastMeetingDetailsResponse = client.GetAsync(BASE_API_URL + "past_meetings/" + meetingUUID + "/participants?page_size=30").Result;
 
             if (pastMeetingDetailsResponse.IsSuccessStatusCode)
             {

@@ -38,9 +38,9 @@ namespace Toplanti.WebAPI.Controllers
         }
 
         [HttpGet("meetingparticipants")]
-        public ActionResult GetMeetingParticipants([FromQuery] string meetingId)
+        public ActionResult GetMeetingParticipants([FromQuery] string meetingUUID)
         {
-            var result = _zoomApi.GetMeetingParticipantsNew(meetingId);
+            var result = _zoomApi.GetMeetingParticipantsNew(meetingUUID);
             return Ok(result);
         }
 
@@ -55,6 +55,13 @@ namespace Toplanti.WebAPI.Controllers
         public ActionResult GetPastMeetingDetails([FromQuery] string meetingId)
         {
             var result = _zoomApi.GetPastMeetingDetailsNew(meetingId).Result;
+            return Ok(result);
+        }
+
+        [HttpGet("meetingdetails")]
+        public ActionResult GetMeetingDetails([FromQuery] string meetingId)
+        {
+            var result = _zoomApi.GetMeetingDetailsNew(meetingId);
             return Ok(result);
         }
 
@@ -73,13 +80,6 @@ namespace Toplanti.WebAPI.Controllers
         public ActionResult GetExistUser()
         {
             var result = _zoomApi.GetExistUser();
-            return Ok(result);
-        }
-
-        [HttpGet("meetingdetails")]
-        public ActionResult GetMeetingDetails([FromQuery] string meetingId)
-        {
-            var result = _zoomApi.GetMeetingDetails(meetingId);
             return Ok(result);
         }
 
@@ -103,6 +103,12 @@ namespace Toplanti.WebAPI.Controllers
         public ActionResult GetPastMeetingDetailsOld([FromQuery] string meetingId)
         {
             var result = _zoomApi.GetPastMeetingDetails(meetingId);
+            return Ok(result);
+        }
+        [HttpGet("meetingdetailsOld")]
+        public ActionResult GetMeetingDetailsOld([FromQuery] string meetingId)
+        {
+            var result = _zoomApi.GetMeetingDetails(meetingId);
             return Ok(result);
         }
 
