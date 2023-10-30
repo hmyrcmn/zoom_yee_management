@@ -141,6 +141,7 @@ namespace Toplanti.Business.HttpClients
             ZoomUserList zoomUsers = new ZoomUserList();
 
             var accessToken = await _tokenHelper.CreateAccessToken();
+
             var client = _httpClientFactory.CreateClient(APIName);
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 

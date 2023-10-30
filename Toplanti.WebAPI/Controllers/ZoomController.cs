@@ -40,7 +40,7 @@ namespace Toplanti.WebAPI.Controllers
         [HttpGet("meetingparticipants")]
         public ActionResult GetMeetingParticipants([FromQuery] string meetingUUID)
         {
-            var result = _zoomApi.GetMeetingParticipantsNew(meetingUUID);
+            var result = _zoomApi.GetMeetingParticipantsNew(meetingUUID).Result;
             return Ok(result);
         }
 
