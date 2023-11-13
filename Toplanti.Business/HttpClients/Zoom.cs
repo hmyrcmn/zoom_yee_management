@@ -231,6 +231,70 @@ namespace Toplanti.Business.HttpClients
             return zoomId;
         }
 
+        public async Task<IDataResult<List<UserMeetings>>> GetUserMeetingListNew()
+        {
+            List<UserMeetings> userMeetings = new List<UserMeetings>();
+
+            var userEmail = new UserCookie().Email();
+
+            var zoomId = "";
+
+            ZoomUserList zoomUsers = new ZoomUserList();
+            ZoomUserList zoomUserMeetings = new ZoomUserList();
+
+            var token =  await _tokenHelper.CreateAccessToken();
+
+            var client = _httpClientFactory.CreateClient(APIName);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            HttpResponseMessage zoomUserListResponse = client.GetAsync(BASE_API_URL + "users?page_number=0&page_size=300").Result;
+
+            if (zoomUserListResponse.IsSuccessStatusCode)
+            {
+                zoomUsers = JsonConvert.DeserializeObject<ZoomUserList>(zoomUserListResponse.Content.ReadAsStringAsync().Result);
+
+                for (int index = 2; index <= zoomUsers.page_count; index++)
+                {
+                    var pageRes = client.GetAsync(BASE_API_URL + "users?page_number=" + index + "&page_size=300").GetAwaiter().GetResult();
+                    var tempUsers = JsonConvert.DeserializeObject<ZoomUserList>(pageRes.Content.ReadAsStringAsync().Result).users;
+                    zoomUsers.users = zoomUsers.users.Concat(tempUsers).ToList();
+                }
+
+                if (zoomUsers.users != null)
+                {
+                    zoomId = zoomUsers.users.FirstOrDefault(s => s.email == userEmail)?.id;
+                    if (zoomId != "" && zoomId != null)
+                    {
+                        HttpResponseMessage userMeetingsResponse = client.GetAsync(BASE_API_URL + "users/" + zoomId + "/meetings?page_number=1&page_size=300").Result;
+                        if (userMeetingsResponse.IsSuccessStatusCode)
+                        {
+                            zoomUserMeetings = JsonConvert.DeserializeObject<ZoomUserList>(userMeetingsResponse.Content.ReadAsStringAsync().Result);//.meetings.ToList().OrderByDescending(s => s.start_time).ToList();
+
+                            for (int index = 2; index <= zoomUserMeetings.page_count; index++)
+                            {
+                                var pageRes = client.GetAsync(BASE_API_URL + "users/" + zoomId + "/meetings?page_number=" + index + "&page_size=300").GetAwaiter().GetResult();
+                                var tempUserMeetings = JsonConvert.DeserializeObject<ZoomUserList>(pageRes.Content.ReadAsStringAsync().Result).meetings;
+                                zoomUserMeetings.meetings = zoomUserMeetings.meetings.Concat(tempUserMeetings).ToList();
+                            }
+
+                            userMeetings = zoomUserMeetings.meetings.ToList().OrderByDescending(s => s.start_time).ToList();
+                        }
+                        else
+                        {
+                            return new ErrorDataResult<List<UserMeetings>>(userMeetings, Messages.UserZoomMeetingsListed);
+
+                        }
+                    }
+                }
+            }
+            else
+            {
+                return new ErrorDataResult<List<UserMeetings>>(userMeetings, Messages.UserZoomMeetingsListed);
+            }
+
+            return new SuccessDataResult<List<UserMeetings>>(userMeetings, Messages.UserZoomMeetingsListed);
+        }
+
         //Old
         public IDataResult<ZoomCreatedResponse> CreateZoomMeeting(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest)
         {
@@ -564,5 +628,6 @@ namespace Toplanti.Business.HttpClients
             return result;
         }
 
+      
     }
 }

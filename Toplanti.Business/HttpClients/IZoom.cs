@@ -17,6 +17,8 @@ namespace Toplanti.Business.HttpClients
         public Task<IDataResult<PastMeetingDetails>> GetPastMeetingDetailsNew(string meetingId);
         public Task<IDataResult<PastMeetingDetails>> GetMeetingDetailsNew(string meetingId);
         public Task<IDataResult<List<Participants>>> GetMeetingParticipantsNew(string meetingUUID);
+        public Task<IDataResult<List<UserMeetings>>> GetUserMeetingListNew();
+
 
         public IDataResult<ZoomCreatedResponse> CreateZoomMeeting(ZoomAuthRequest zoomAuthRequest, ZoomCreateRequest zoomCreateRequest);
         public IResult DeleteZoomMeeting(double meetingId);

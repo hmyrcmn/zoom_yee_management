@@ -63,14 +63,22 @@ namespace Toplanti.WebAPI.Controllers
         {
             var result = _zoomApi.GetMeetingDetailsNew(meetingId).Result;
             return Ok(result);
+
+        }
+
+        [HttpGet("usermeetings")]
+        public ActionResult GetUserZoomMeetings()
+        {
+            var result = _zoomApi.GetUserMeetingListNew().Result;
+            return Ok(result);
         }
 
         #endregion
 
 
 
-        [HttpGet("usermeetings")]
-        public ActionResult GetUserZoomMeetings()
+        [HttpGet("usermeetingsold")]
+        public ActionResult GetUserZoomMeetingsOld()
         {
             var result = _zoomApi.GetUserMeetingList();
             return Ok(result);
