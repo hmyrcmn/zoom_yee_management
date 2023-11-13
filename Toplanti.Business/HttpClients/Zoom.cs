@@ -448,17 +448,17 @@ namespace Toplanti.Business.HttpClients
         public IDataResult<bool> GetExistUser()
         {
             var email = new UserCookie().Email();
-            var result = GetIsExistUserByEmail(email);
+            var result = GetIsExistUserByEmail(email).Result;
             return new SuccessDataResult<bool>(result);
         }
 
-        private bool GetIsExistUserByEmail(string email)
+        private async Task<bool> GetIsExistUserByEmail(string email)
         {
             bool result = false;
-            var jwtToken = _tokenHelper.CreateZoomToken();
+            var accessToken =await _tokenHelper.CreateAccessToken();
 
             var client = _httpClientFactory.CreateClient(APIName);
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwtToken.Token);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 
             HttpResponseMessage response = client.GetAsync(BASE_API_URL + "users/email?email=" + email).GetAwaiter().GetResult();
 
