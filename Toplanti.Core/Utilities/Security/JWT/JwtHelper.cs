@@ -1,23 +1,27 @@
-﻿using Core.Utilities.Security.Encrytion;
+﻿using Toplanti.Core.Utilities.Security.Encrytion;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
 using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http;
 using System.Text;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Toplanti.Core.Entities.Concrete;
 
-namespace Core.Utilities.Security.JWT
+namespace Toplanti.Core.Utilities.Security.JWT
 {
     public class JwtHelper : ITokenHelper
     {
         public IConfiguration Configuration { get; }
         private TokenOptions _zoomTokenOptions;
+        private TokenOptions _tokenOptions;
         private DateTime _accessTokenExpiration;
         public JwtHelper(IConfiguration configuration)
         {
             Configuration = configuration;
             _zoomTokenOptions = Configuration.GetSection("TokenZoom").Get<TokenOptions>();
+            _tokenOptions = Configuration.GetSection("TokenOptions").Get<TokenOptions>();
         }
 
         public AccessToken CreateZoomToken()
@@ -66,6 +70,40 @@ namespace Core.Utilities.Security.JWT
             var accessToken = JObject.Parse(result)["access_token"].ToString();
 
             return accessToken;
+        }
+
+        public AccessToken CreateToken(User user, List<OperationClaim> operationClaims)
+        {
+            _accessTokenExpiration = DateTime.Now.AddMinutes(_tokenOptions.AccessTokenExpiration);
+            var securityKey = SecurityKeyHelper.CreateSecurityKey(_tokenOptions.SecurityKey);
+            var signingCredentials = SigningCredentialsHelper.CreateSigningCredentials(securityKey);
+
+            var claims = new List<System.Security.Claims.Claim>();
+            claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()));
+            claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Email, user.Email));
+            claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, $"{user.FirstName} {user.LastName}"));
+            
+            foreach (var role in operationClaims)
+            {
+                claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, role.Name));
+            }
+
+            var jwt = new JwtSecurityToken(
+                issuer: _tokenOptions.Issuer,
+                audience: _tokenOptions.Audience,
+                expires: _accessTokenExpiration,
+                claims: claims,
+                signingCredentials: signingCredentials
+            );
+
+            var jwtSecurityTokenHandler = new JwtSecurityTokenHandler();
+            var token = jwtSecurityTokenHandler.WriteToken(jwt);
+
+            return new AccessToken
+            {
+                Token = token,
+                Expiration = _accessTokenExpiration
+            };
         }
     }
 }

@@ -1,5 +1,5 @@
-﻿using Core.DataAccess.Collections;
-using Core.Entities;
+﻿using Toplanti.Core.DataAccess.Collections;
+using Toplanti.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using System;
@@ -9,7 +9,7 @@ using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.DataAccess.EntityFramework
+namespace Toplanti.Core.DataAccess.EntityFramework
 {
     public class EfEntityRepositoryBase<TEntity, TContext> : IEntityRepository<TEntity>
     where TEntity : class, IEntity, new()

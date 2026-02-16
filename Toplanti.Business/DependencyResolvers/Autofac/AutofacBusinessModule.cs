@@ -6,6 +6,8 @@ using Core.Utilities.Security.JWT;
 using Toplanti.Business.Abstract;
 using Toplanti.Business.Concrete;
 using Toplanti.Business.HttpClients;
+using Toplanti.DataAccess.Abstract;
+using Toplanti.DataAccess.Concrete.EntityFramework;
 
 namespace Toplanti.Business.DependencyResolvers.Autofac
 {
@@ -14,11 +16,13 @@ namespace Toplanti.Business.DependencyResolvers.Autofac
         protected override void Load(ContainerBuilder builder)
         {
             builder.RegisterType<UserManager>().As<IUserService>();
+            builder.RegisterType<EfUserDal>().As<IUserDal>();
 
             builder.RegisterType<AuthManager>().As<IAuthService>();
             builder.RegisterType<JwtHelper>().As<ITokenHelper>();
 
             builder.RegisterType<SsoApi>().As<ISsoApi>();
+            builder.RegisterType<LdapManager>().As<ILdapService>();
 
             var assembly = System.Reflection.Assembly.GetExecutingAssembly();
 

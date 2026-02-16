@@ -1,19 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Autofac" Version="6.3.0" />
-    <PackageReference Include="Autofac.Extras.DynamicProxy" Version="6.0.1" />
-    <PackageReference Include="AutoMapper" Version="11.0.1" />
-    <PackageReference Include="Castle.Core" Version="5.0.0" />
-    <PackageReference Include="MailKit" Version="3.2.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="6.0.0" />
-    <PackageReference Include="MimeKit" Version="3.2.0" />
-    <PackageReference Include="RestSharp" Version="110.2.0" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Autofac" Version="8.0.0" />
+    <PackageReference Include="Autofac.Extras.DynamicProxy" Version="7.1.0" />
+    <PackageReference Include="AutoMapper" Version="13.0.1" />
+    <PackageReference Include="Castle.Core" Version="5.1.1" />
+    <PackageReference Include="MailKit" Version="4.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+    <PackageReference Include="MimeKit" Version="4.4.0" />
+    <PackageReference Include="Novell.Directory.Ldap.NETStandard" Version="3.6.0" />
+    <PackageReference Include="RestSharp" Version="111.4.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Toplanti.Core\Toplanti.Core.csproj" />
     <ProjectReference Include="..\Toplanti.Entities\Toplanti.Entities.csproj" />
+    <ProjectReference Include="..\Toplanti.DataAccess\Toplanti.DataAccess.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Toplanti.Business.Abstract;
+using Toplanti.Entities.DTOs;
 
 namespace Toplanti.WebAPI.Controllers
 {
@@ -49,6 +50,17 @@ namespace Toplanti.WebAPI.Controllers
         {
             var authProperties = new AuthenticationProperties() { IsPersistent = true };
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme, authProperties);
+        }
+
+        [HttpPost("login")]
+        public ActionResult Login(UserForLoginDto userForLoginDto)
+        {
+            var userToLogin = _authService.Login(userForLoginDto);
+            if (!userToLogin.Success)
+            {
+                return BadRequest(userToLogin);
+            }
+            return Ok(userToLogin);
         }
 
         [HttpGet("userinfo")]
