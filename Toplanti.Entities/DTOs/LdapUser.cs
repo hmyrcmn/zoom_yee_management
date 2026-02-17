@@ -9,5 +9,6 @@ namespace Toplanti.Entities.DTOs
         public string Surname { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Username { get; set; } = string.Empty;
+        public System.Collections.Generic.List<string> Groups { get; set; } = new();
     }
 }

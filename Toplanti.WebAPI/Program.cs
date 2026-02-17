@@ -77,7 +77,10 @@ try {
 }
 
 
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+builder.Services.AddAuthentication(options => {
+        options.DefaultAuthenticateScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddCookie(option =>
     {
         option.Cookie.Name = ".AspNet.SharedCookie";
@@ -89,6 +92,23 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         option.Cookie.HttpOnly = true;
         option.Cookie.IsEssential = true;
         option.ExpireTimeSpan = TimeSpan.FromDays(10);
+    })
+    .AddJwtBearer(options =>
+    {
+        var tokenOptions = configuration.GetSection("TokenOptions").Get<Toplanti.Core.Utilities.Security.JWT.TokenOptions>();
+        if (tokenOptions != null)
+        {
+            options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidIssuer = tokenOptions.Issuer,
+                ValidAudience = tokenOptions.Audience,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = Toplanti.Core.Utilities.Security.Encrytion.SecurityKeyHelper.CreateSecurityKey(tokenOptions.SecurityKey)
+            };
+        }
     });
 
 builder.Services.AddControllers();
@@ -166,7 +186,7 @@ app.ConfigureCustomExceptionMiddleware();
 var herIstegeAcik = Convert.ToBoolean(configuration["Cors:HerIstegeAcik"] ?? "true");
 app.UseCors(herIstegeAcik ? "CorsAcik" : "CorsOzel");
 
-// app.UseHttpsRedirection();
+app.UseHttpsRedirection();
 
 app.UseRouting();
 app.UseCookiePolicy();

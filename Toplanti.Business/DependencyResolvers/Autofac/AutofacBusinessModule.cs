@@ -17,8 +17,11 @@ namespace Toplanti.Business.DependencyResolvers.Autofac
         {
             builder.RegisterType<UserManager>().As<IUserService>();
             builder.RegisterType<EfUserDal>().As<IUserDal>();
+            builder.RegisterType<EfOperationClaimDal>().As<IOperationClaimDal>();
+            builder.RegisterType<EfUserOperationClaimDal>().As<IUserOperationClaimDal>();
 
             builder.RegisterType<AuthManager>().As<IAuthService>();
+            builder.RegisterType<AuthTestManager>().As<IAuthTestService>();
             builder.RegisterType<JwtHelper>().As<ITokenHelper>();
 
             builder.RegisterType<SsoApi>().As<ISsoApi>();

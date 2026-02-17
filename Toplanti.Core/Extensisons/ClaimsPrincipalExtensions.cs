@@ -11,16 +11,8 @@ namespace Toplanti.Core.Extensisons
     {
         public static List<string> Claims(this ClaimsPrincipal claimsPrincipal, string claimType)
         {
-            var role = claimsPrincipal?.FindAll(claimType)?.Select(x => x.Value).ToList();
-            if (role.Count > 0)
-            {
-                var result = role[0].Split(",").ToList();
-                return result;
-            }
-            else
-            {
-                return role;
-            }
+            var results = claimsPrincipal?.FindAll(claimType)?.Select(x => x.Value).ToList();
+            return results ?? new List<string>();
         }
 
         public static List<string> ClaimRoles(this ClaimsPrincipal claimsPrincipal)

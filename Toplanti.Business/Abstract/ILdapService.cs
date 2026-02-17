@@ -5,7 +5,6 @@ namespace Toplanti.Business.Abstract
 {
     public interface ILdapService
     {
-        bool ValidateUser(string username, string password);
-        LdapUser? GetUserDetails(string username);
+        LdapUser? ValidateUser(string username, string password);
     }
 }

@@ -27,6 +27,8 @@ namespace Toplanti.DataAccess.Concrete.EntityFramework.Contexts
         }
 
         public DbSet<User> Users { get; set; } = null!;
+        public DbSet<OperationClaim> OperationClaims { get; set; } = null!;
+        public DbSet<UserOperationClaim> UserOperationClaims { get; set; } = null!;
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
