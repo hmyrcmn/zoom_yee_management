@@ -1,3 +1,4 @@
+﻿#nullable enable
 using Toplanti.Entities.DTOs;
 
 namespace Toplanti.Business.Abstract

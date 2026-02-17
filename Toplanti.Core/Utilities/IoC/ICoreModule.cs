@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.Utilities.IoC
+namespace Toplanti.Core.Utilities.IoC
 {
     public interface ICoreModule
     {

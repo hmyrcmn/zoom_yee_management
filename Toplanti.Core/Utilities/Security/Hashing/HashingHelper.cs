@@ -4,11 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.Utilities.Security.Hashing
+namespace Toplanti.Core.Utilities.Security.Hashing
 {
     public class HashingHelper
     {
-        public static void CreatePasswprdHash
+        public static void CreatePasswordHash
             (string password, out byte[] passwordHash, out byte[] passwordSalt)
         {
             using (var hmac = new System.Security.Cryptography.HMACSHA512())

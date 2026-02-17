@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Novell.Directory.Ldap;
 using System;
 using Toplanti.Business.Abstract;
@@ -18,38 +18,46 @@ namespace Toplanti.Business.Concrete
 
         public LdapUser? GetUserDetails(string username)
         {
-            var user = new LdapUser();
-            using (var connection = new LdapConnection())
+            try
             {
-                try
+                using (var connection = new LdapConnection())
                 {
-                    connection.Connect(_ldapSettings.Host ?? "localhost", _ldapSettings.Port);
-                    // Bind with service account or anonymous if allowed, or re-bind with user credentials if we had them here.
-                    // For now, assuming we can search anonymously or the previous bind persists in a real scenario (but here we open new conn).
-                    // In production, you typically bind with a service account to search.
-                    // For this implementation, we will try to bind with the user's domain info if possible or just catch the exception.
+                    string host = _ldapSettings.Host ?? "localhost";
+                    int port = _ldapSettings.Port;
+                    string domain = _ldapSettings.Domain ?? "example.com";
+
+                    Console.WriteLine($"[LDAP] Connecting to {host}:{port} for user details: {username} (SSL: false, Timeout: 10s)");
+                    connection.SecureSocketLayer = false;
+                    connection.ConnectionTimeout = 10000;
+                    connection.Connect(host, port);
+                    Console.WriteLine("SUCCESS: Connected to LDAP for user details retrieval.");
                     
-                    // Simplification: logic to extract user details would go here.
-                    // For now returning a placeholder based on input as requested to keep it simple.
-                    
-                    user.Username = username;
-                    user.Email = $"{username}@{_ldapSettings.Domain ?? "example.com"}";
-                    user.Name = username;
-                    user.Surname = "";
-                }
-                catch (LdapException)
-                {
-                    // Handle exception or log
-                    return null!;
+                    return new LdapUser
+                    {
+                        Username = username,
+                        Email = $"{username}@{domain}",
+                        Name = username,
+                        Surname = ""
+                    };
                 }
             }
-            return user;
+            catch (LdapException ex)
+            {
+                Console.WriteLine($"[LDAP Error] GetUserDetails failed. Message: {ex.Message}, ResultCode: {ex.ResultCode}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] GetUserDetails failed: {ex.Message}");
+                return null;
+            }
         }
 
         public bool ValidateUser(string username, string password)
         {
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
+                Console.WriteLine("[LDAP] ValidateUser failed: Username or password empty.");
                 return false;
             }
 
@@ -57,21 +65,64 @@ namespace Toplanti.Business.Concrete
             {
                 try
                 {
-                    connection.Connect(_ldapSettings.Host ?? "localhost", _ldapSettings.Port);
-                    // Create the DN (Distinguished Name) using the domain and username
-                     // Modify this format based on your actual AD structure. 
-                     // Common formats: "domain\\username" or "cn=username,dc=example,dc=com" or "username@domain"
-                    string userDn = $"{username}@{_ldapSettings.Domain ?? "example.com"}";
+                    string host = _ldapSettings.Host ?? "localhost";
+                    int port = _ldapSettings.Port;
+                    string domain = _ldapSettings.Domain ?? "example.com";
                     
-                    connection.Bind(userDn, password);
-                    return connection.Bound;
-                }
-                catch (LdapException)
-                {
+                    Console.WriteLine($"[LDAP] Attempting to connect to {host}:{port} (SSL: false, Timeout: 10s)");
+                    connection.SecureSocketLayer = false;
+                    connection.ConnectionTimeout = 10000;
+                    connection.Connect(host, port);
+                    Console.WriteLine("SUCCESS: Connected to LDAP for validation.");
+                    
+                    if (!connection.Connected)
+                    {
+                        Console.WriteLine("[LDAP Error] Connection object says it's not connected.");
+                        return false;
+                    }
+
+                    string userUpn = username.Contains("@") ? username : $"{username}@{domain}";
+                    Console.WriteLine($"[LDAP] Attempting Bind with UPN: {userUpn}");
+                    
+                    try 
+                    {
+                        connection.Bind(userUpn, password);
+                        if (connection.Bound)
+                        {
+                            Console.WriteLine($"[LDAP Success] User authenticated successfully with UPN: {userUpn}");
+                            return true;
+                        }
+                    }
+                    catch (LdapException ex) when (ex.ResultCode == 49)
+                    {
+                        Console.WriteLine($"[LDAP Info] UPN Bind failed (Invalid Credentials). Trying raw username: {username}");
+                    }
+
+                    if (!username.Contains("@"))
+                    {
+                        Console.WriteLine($"[LDAP] Attempting Bind with raw username: {username}");
+                        connection.Bind(username, password);
+                        if (connection.Bound)
+                        {
+                            Console.WriteLine($"[LDAP Success] User authenticated successfully with raw username: {username}");
+                            return true;
+                        }
+                    }
+
+                    Console.WriteLine("[LDAP Failure] All bind attempts failed.");
                     return false;
                 }
-                catch (Exception)
+                catch (LdapException ex)
                 {
+                    Console.WriteLine($"[LDAP Error] Bind failed for user {username}.");
+                    Console.WriteLine("Message: " + ex.Message);
+                    Console.WriteLine("Result Code: " + ex.ResultCode);
+
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[General Error] LDAP Validation failed: " + ex.Message);
                     return false;
                 }
             }

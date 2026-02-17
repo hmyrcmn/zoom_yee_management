@@ -1,8 +1,8 @@
 ﻿using Autofac;
 using Autofac.Extras.DynamicProxy;
 using Castle.DynamicProxy;
-using Core.Utilities.Interceptors;
-using Core.Utilities.Security.JWT;
+using Toplanti.Core.Utilities.Interceptors;
+using Toplanti.Core.Utilities.Security.JWT;
 using Toplanti.Business.Abstract;
 using Toplanti.Business.Concrete;
 using Toplanti.Business.HttpClients;

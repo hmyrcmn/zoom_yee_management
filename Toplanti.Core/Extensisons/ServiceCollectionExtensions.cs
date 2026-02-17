@@ -1,4 +1,4 @@
-﻿using Core.Utilities.IoC;
+﻿using Toplanti.Core.Utilities.IoC;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.Extensisons
+namespace Toplanti.Core.Extensisons
 {
     public static class ServiceCollectionExtensions
     {

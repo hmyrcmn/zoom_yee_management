@@ -1,5 +1,5 @@
-﻿using Core.Entities.Concrete;
-using Core.Utilities.Results;
+﻿using Toplanti.Core.Entities.Concrete;
+using Toplanti.Core.Utilities.Results;
 using System;
 using System.Collections.Generic;
 using System.Linq;

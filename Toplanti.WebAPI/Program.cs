@@ -1,8 +1,8 @@
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
-using Core.DependencyResolvers;
-using Core.Extensisons;
-using Core.Utilities.IoC;
+using Toplanti.Core.DependencyResolvers;
+using Toplanti.Core.Extensisons;
+using Toplanti.Core.Utilities.IoC;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -16,6 +16,8 @@ using System.IO;
 using System.Threading.Tasks;
 using Toplanti.Business.DependencyResolvers.Autofac;
 using Toplanti.Core.Entities.Concrete;
+using Toplanti.DataAccess.Concrete.EntityFramework.Contexts;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -90,6 +92,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 
 builder.Services.AddControllers();
+builder.Services.AddDbContext<ToplantiContext>();
 
 builder.Services.AddSwaggerGen(c =>
 {
@@ -143,6 +146,13 @@ builder.Services.AddDependencyResolvers(new ICoreModule[]
 
 var app = builder.Build();
 
+// Ensure Database is created
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<ToplantiContext>();
+    context.Database.EnsureCreated();
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -156,7 +166,7 @@ app.ConfigureCustomExceptionMiddleware();
 var herIstegeAcik = Convert.ToBoolean(configuration["Cors:HerIstegeAcik"] ?? "true");
 app.UseCors(herIstegeAcik ? "CorsAcik" : "CorsOzel");
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 app.UseRouting();
 app.UseCookiePolicy();

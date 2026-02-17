@@ -1,4 +1,4 @@
-﻿using Core.Utilities.Results;
+﻿using Toplanti.Core.Utilities.Results;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -45,12 +45,6 @@ namespace Toplanti.Business.Concrete
             }
 
             // 2. Sync Logic (Check Local DB)
-            // LDAP username might be an email or just username. Assuming email for now or extracting username.
-            // LdapService.ValidateUser expects username, here we pass email from DTO.
-            // Adjust depending on whether ValidateUser takes email or username.
-            // Let's assume input email is treated as username for LDAP if it's not a full email, or system handles it.
-
-            // Get User Details from LDAP to sync
             var username = userForLoginDto.Email.Split('@')[0]; 
             var ldapUser = _ldapService.GetUserDetails(username);
 
@@ -64,7 +58,7 @@ namespace Toplanti.Business.Concrete
             if (userToCheck == null)
             {
                 // Create New User
-                var newUser = new Core.Entities.Concrete.User
+                var newUser = new Toplanti.Core.Entities.Concrete.User
                 {
                     Username = ldapUser.Username ?? string.Empty,
                     FirstName = ldapUser.Name ?? string.Empty,
@@ -74,7 +68,6 @@ namespace Toplanti.Business.Concrete
                     AddedTime = DateTime.Now,
                     Active = true,
                     Deleted = false,
-                    // PasswordHash/Salt not used for LDAP auth, can be left empty or random
                     PasswordHash = new byte[0], 
                     PasswordSalt = new byte[0]
                 };
@@ -86,14 +79,11 @@ namespace Toplanti.Business.Concrete
                 // Update Existing User
                 userToCheck.FirstName = ldapUser.Name ?? userToCheck.FirstName;
                 userToCheck.LastName = ldapUser.Surname ?? userToCheck.LastName;
-                // Update other fields if necessary
                 _userDal.Update(userToCheck);
             }
 
             // 3. Generate Token
-            // We pass empty operation claims for now as we haven't implemented UserOperationClaims retrieval yet.
-            // Future improvement: Retrieve and pass actual user roles.
-            var accessToken = _tokenHelper.CreateToken(userToCheck!, new List<Core.Entities.Concrete.OperationClaim>());
+            var accessToken = _tokenHelper.CreateToken(userToCheck!, new List<Toplanti.Core.Entities.Concrete.OperationClaim>());
             
             return new SuccessDataResult<AccessToken>(accessToken, "Giriş başarılı");
         }

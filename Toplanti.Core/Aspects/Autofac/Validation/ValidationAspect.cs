@@ -1,6 +1,6 @@
 ﻿using Castle.DynamicProxy;
-using Core.CrossCuttingConcerns.Validation;
-using Core.Utilities.Interceptors;
+using Toplanti.Core.CrossCuttingConcerns.Validation;
+using Toplanti.Core.Utilities.Interceptors;
 using FluentValidation;
 using System;
 using System.Collections.Generic;
@@ -9,7 +9,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.Aspects.Autofac.Validation
+namespace Toplanti.Core.Aspects.Autofac.Validation
 {
     public class ValidationAspect : MethodInterception
     {

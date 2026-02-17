@@ -4,9 +4,9 @@ using System;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Toplanti.Business.Constants;
-using Core.Utilities.Interceptors;
-using Core.Utilities.IoC;
-using Core.Extensisons;
+using Toplanti.Core.Utilities.Interceptors;
+using Toplanti.Core.Utilities.IoC;
+using Toplanti.Core.Extensisons;
 
 namespace Toplanti.Business.BusinessAspects.Autofac
 {

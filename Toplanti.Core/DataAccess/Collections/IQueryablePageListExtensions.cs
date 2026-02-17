@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Core.DataAccess.Collections
+namespace Toplanti.Core.DataAccess.Collections
 {
     public static class IQueryablePageListExtensions
     {

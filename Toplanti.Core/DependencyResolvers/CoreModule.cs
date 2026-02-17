@@ -1,4 +1,4 @@
-﻿using Core.Utilities.IoC;
+﻿using Toplanti.Core.Utilities.IoC;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.DependencyResolvers
+namespace Toplanti.Core.DependencyResolvers
 {
     public class CoreModule : ICoreModule
     {

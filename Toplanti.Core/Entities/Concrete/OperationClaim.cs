@@ -9,6 +9,6 @@ namespace Toplanti.Core.Entities.Concrete
 {
     public class OperationClaim: Base, IEntity
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
     }
 }

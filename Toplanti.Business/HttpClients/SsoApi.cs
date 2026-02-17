@@ -1,4 +1,4 @@
-﻿using Core.Utilities.Results;
+﻿using Toplanti.Core.Utilities.Results;
 using Newtonsoft.Json;
 using System.Net.Http;
 using System.Net.Http.Json;

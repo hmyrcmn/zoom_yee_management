@@ -1,7 +1,7 @@
 ﻿using FluentValidation.Results;
 using System.Collections.Generic;
 
-namespace Core.Extensisons
+namespace Toplanti.Core.Extensisons
 {
     public class ValidationErrorDetails : ErrorDetails
     {

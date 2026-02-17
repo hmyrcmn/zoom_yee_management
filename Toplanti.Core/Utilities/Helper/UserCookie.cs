@@ -1,5 +1,5 @@
-﻿using Core.Extensisons;
-using Core.Utilities.IoC;
+﻿using Toplanti.Core.Extensisons;
+using Toplanti.Core.Utilities.IoC;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using System;

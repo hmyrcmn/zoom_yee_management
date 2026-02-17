@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.DataAccess.Collections
+namespace Toplanti.Core.DataAccess.Collections
 {
     /// <summary>
     /// Provides some extension methods for <see cref="IEnumerable{T}"/> to provide paging capability.

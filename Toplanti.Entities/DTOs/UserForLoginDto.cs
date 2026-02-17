@@ -1,4 +1,4 @@
-using Core.Entities;
+using Toplanti.Core.Entities;
 
 namespace Toplanti.Entities.DTOs
 {

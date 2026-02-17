@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.Extensisons
+namespace Toplanti.Core.Extensisons
 {
     public static class ExceptionMiddlewareExtensions
     {

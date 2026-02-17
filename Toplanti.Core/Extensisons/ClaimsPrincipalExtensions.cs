@@ -5,7 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.Extensisons
+namespace Toplanti.Core.Extensisons
 {
     public static class ClaimsPrincipalExtensions
     {
