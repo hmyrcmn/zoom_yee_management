@@ -115,6 +115,7 @@ builder.Services.AddAuthentication(options => {
 
 builder.Services.AddControllers();
 builder.Services.AddDbContext<ToplantiContext>();
+builder.Services.AddHttpClient("ZoomApi");
 
 builder.Services.AddSwaggerGen(c =>
 {

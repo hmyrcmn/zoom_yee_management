@@ -52,12 +52,16 @@ namespace Toplanti.Core.Utilities.Security.JWT
 
         public async Task<string> CreateAccessToken()
         {
-            var accountId = "JA-PkZ3iRl6j_WL1SbvuEQ";
+            var accountId = Configuration["ZoomOAuth:AccountId"];
             var tokenRequestBody = $"grant_type=account_credentials&account_id={accountId}";
             var tokenUrl = "https://zoom.us/oauth/token";
 
-            var clientId = "n15GtcK0R7udggtQQBY_Zw";
-            var clientSecret = "zl7d2TwmCTJ9YO5q0WQVkvt1gDXS7FYE";
+            var clientId = Configuration["ZoomOAuth:ClientId"];
+            var clientSecret = Configuration["ZoomOAuth:ClientSecret"];
+            if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            {
+                throw new InvalidOperationException("ZoomOAuth configuration is missing AccountId/ClientId/ClientSecret.");
+            }
 
             var requestContent = new StringContent(tokenRequestBody, Encoding.UTF8, "application/x-www-form-urlencoded");
 
@@ -67,7 +71,16 @@ namespace Toplanti.Core.Utilities.Security.JWT
 
             var response = await client.PostAsync(tokenUrl, requestContent);
             var result = await response.Content.ReadAsStringAsync();
-            var accessToken = JObject.Parse(result)["access_token"].ToString();
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"Zoom OAuth token request failed ({(int)response.StatusCode}): {result}");
+            }
+
+            var accessToken = JObject.Parse(result)["access_token"]?.ToString();
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                throw new InvalidOperationException($"Zoom OAuth token response does not contain access_token. Response: {result}");
+            }
 
             return accessToken;
         }

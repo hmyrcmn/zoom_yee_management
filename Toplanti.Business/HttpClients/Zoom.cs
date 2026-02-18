@@ -195,7 +195,16 @@ namespace Toplanti.Business.HttpClients
                 {
                     foreach (var zmUser in zoomUsers.users.Where(s => s.type == 2))
                     {
-                        var ssoUser = _ssoApi.GetUserOnlyEmail(zmUser.email);
+                        object ssoUser = null;
+                        try
+                        {
+                            // SSO might be unavailable in local environment; do not fail meeting creation for this.
+                            ssoUser = _ssoApi.GetUserOnlyEmail(zmUser.email);
+                        }
+                        catch
+                        {
+                            ssoUser = null;
+                        }
                         if (ssoUser != null)
                         {
                             HttpResponseMessage userMeetings = client.GetAsync(BASE_API_URL + "users/" + zmUser.id + "/meetings?page_size=300&type=upcoming").GetAwaiter().GetResult();

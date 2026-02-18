@@ -1,11 +1,13 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Security.Claims;
-using Toplanti.DataAccess.Concrete.EntityFramework.Contexts;
+using System.Threading.Tasks;
+using Toplanti.Business.HttpClients;
 using Toplanti.Core.Utilities.Results;
+using Toplanti.DataAccess.Concrete.EntityFramework.Contexts;
 using Toplanti.Entities.Zoom;
 
 namespace Toplanti.WebAPI.Controllers
@@ -16,31 +18,47 @@ namespace Toplanti.WebAPI.Controllers
     public class MeetingsController : ControllerBase
     {
         private readonly ToplantiContext _context;
+        private readonly IZoom _zoomApi;
 
-        public MeetingsController(ToplantiContext context)
+        public MeetingsController(ToplantiContext context, IZoom zoomApi)
         {
             _context = context;
+            _zoomApi = zoomApi;
         }
 
         [HttpPost]
-        public ActionResult CreateMeeting([FromBody] ZoomCreateRequest meetingRequest)
+        public async Task<ActionResult> CreateMeeting([FromBody] ZoomCreateRequest meetingRequest)
         {
-            if (meetingRequest == null)
+            try
             {
-                return BadRequest("Meeting request is required.");
-            }
+                if (meetingRequest == null)
+                {
+                    return BadRequest("Meeting request is required.");
+                }
 
-            var userIdClaim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out var userId) || userId <= 0)
+                var userIdClaim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!int.TryParse(userIdClaim, out var userId) || userId <= 0)
+                {
+                    return Unauthorized("Gecerli kullanici bulunamadi.");
+                }
+
+                EnsureMeetingLogTable();
+
+                var zoomResult = await _zoomApi.CreateZoomMeetingNew(new ZoomAuthRequest(), meetingRequest);
+                if (zoomResult == null || !zoomResult.Success || zoomResult.Data == null)
+                {
+                    return BadRequest(new ErrorDataResult<object>(null, zoomResult?.Message ?? "Zoom toplantisi olusturulamadi."));
+                }
+
+                var responseModel = zoomResult.Data;
+                LogMeeting(userId, meetingRequest, responseModel);
+
+                return Ok(new SuccessDataResult<ZoomCreatedResponse>(responseModel, "Toplanti kaydedildi."));
+            }
+            catch (Exception ex)
             {
-                return Unauthorized("Geçerli kullanıcı bulunamadı.");
+                return BadRequest(new ErrorDataResult<object>(null, $"Toplanti olusturma hatasi: {ex.Message}"));
             }
-
-            EnsureMeetingLogTable();
-            var responseModel = BuildMeetingResponse(meetingRequest);
-            LogMeeting(userId, meetingRequest, responseModel);
-
-            return Ok(new SuccessDataResult<ZoomCreatedResponse>(responseModel, "Toplantı kaydedildi."));
         }
 
         private void EnsureMeetingLogTable()
@@ -63,6 +81,20 @@ BEGIN
     );
 END";
             _context.Database.ExecuteSqlRaw(sql);
+
+            const string ensureJoinUrlColumnSql = @"
+IF COL_LENGTH('dbo.MeetingLogs', 'JoinUrl') IS NULL
+BEGIN
+    ALTER TABLE dbo.MeetingLogs ADD JoinUrl NVARCHAR(1000) NULL;
+END";
+            _context.Database.ExecuteSqlRaw(ensureJoinUrlColumnSql);
+
+            const string ensureStartUrlColumnSql = @"
+IF COL_LENGTH('dbo.MeetingLogs', 'StartUrl') IS NULL
+BEGIN
+    ALTER TABLE dbo.MeetingLogs ADD StartUrl NVARCHAR(1000) NULL;
+END";
+            _context.Database.ExecuteSqlRaw(ensureStartUrlColumnSql);
         }
 
         private void LogMeeting(int userId, ZoomCreateRequest request, ZoomCreatedResponse response)
@@ -88,25 +120,6 @@ VALUES
             };
 
             _context.Database.ExecuteSqlRaw(sql, parameters);
-        }
-
-        private ZoomCreatedResponse BuildMeetingResponse(ZoomCreateRequest request)
-        {
-            var now = DateTime.UtcNow;
-            return new ZoomCreatedResponse
-            {
-                id = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                topic = request.topic ?? string.Empty,
-                agenda = request.agenda ?? string.Empty,
-                duration = request.duration,
-                timezone = request.timezone ?? "UTC",
-                start_time = request.start_time == default ? now : request.start_time,
-                created_at = now,
-                join_url = string.Empty,
-                start_url = string.Empty,
-                type = request.type,
-                status = "scheduled"
-            };
         }
     }
 }
