@@ -44,7 +44,13 @@ namespace Toplanti.Core.Extensisons
 
         public static string Email(this ClaimsPrincipal claimsPrincipal)
         {
-            return claimsPrincipal?.FindAll("email").Select(x => x.Value).ToList().FirstOrDefault();
+            var email = claimsPrincipal?.FindAll("email")?.Select(x => x.Value).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                return email;
+            }
+
+            return claimsPrincipal?.FindAll(ClaimTypes.Email)?.Select(x => x.Value).FirstOrDefault();
         }
         public static string FirstName(this ClaimsPrincipal claimsPrincipal)
         {
@@ -56,6 +62,11 @@ namespace Toplanti.Core.Extensisons
         {
             var result = claimsPrincipal?.FindAll("lastName")?.Select(x => x.Value).FirstOrDefault();
             return result;
+        }
+
+        public static string Department(this ClaimsPrincipal claimsPrincipal)
+        {
+            return claimsPrincipal?.FindAll("department")?.Select(x => x.Value).FirstOrDefault();
         }
     }
 }

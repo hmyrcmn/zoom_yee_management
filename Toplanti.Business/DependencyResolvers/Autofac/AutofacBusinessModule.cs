@@ -26,6 +26,7 @@ namespace Toplanti.Business.DependencyResolvers.Autofac
 
             builder.RegisterType<SsoApi>().As<ISsoApi>();
             builder.RegisterType<LdapManager>().As<ILdapService>();
+            builder.RegisterType<ZoomService>().As<IZoomService>();
 
             var assembly = System.Reflection.Assembly.GetExecutingAssembly();
 

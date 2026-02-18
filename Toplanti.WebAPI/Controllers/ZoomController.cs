@@ -5,6 +5,7 @@ using Toplanti.Business.HttpClients;
 using Toplanti.Core.Utilities.Helper;
 using Toplanti.Entities.DTOs;
 using Toplanti.Entities.Zoom;
+using System.Security.Claims;
 
 namespace Toplanti.WebAPI.Controllers
 {
@@ -24,8 +25,18 @@ namespace Toplanti.WebAPI.Controllers
         [HttpGet("centerperson")]
         public ActionResult GetCenterPerson()
         {
-            var userId = new UserCookie().UserId();
+            var userIdClaim = HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId) || userId <= 0)
+            {
+                return Ok(new List<object>());
+            }
+
             var result = _ssoApi.Person(userId);
+            if (result == null)
+            {
+                return Ok(new List<object>());
+            }
+
             return Ok(result);
         }
 

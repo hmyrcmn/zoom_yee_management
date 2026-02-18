@@ -58,6 +58,10 @@ namespace Toplanti.WebAPI.Controllers
             var userToLogin = _authService.Login(userForLoginDto);
             if (!userToLogin.Success)
             {
+                if (string.Equals(userToLogin.Message, "Lütfen Zoom kaydı için Bilgi İşlem ile iletişime geçiniz.", System.StringComparison.Ordinal))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, userToLogin);
+                }
                 return BadRequest(userToLogin);
             }
             return Ok(userToLogin);

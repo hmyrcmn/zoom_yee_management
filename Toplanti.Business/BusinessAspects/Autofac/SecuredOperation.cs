@@ -25,9 +25,16 @@ namespace Toplanti.Business.BusinessAspects.Autofac
         protected override void OnBefore(IInvocation invocation)
         {
             var roleClaims = _httpContextAccessor.HttpContext.User.ClaimRoles();
+            var department = _httpContextAccessor.HttpContext.User.Department();
             foreach (var role in _roles)
             {
                 if (roleClaims.Contains(role))
+                {
+                    return;
+                }
+
+                if (role.Trim().Equals("Admin", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(department, "Bilişim", StringComparison.OrdinalIgnoreCase))
                 {
                     return;
                 }

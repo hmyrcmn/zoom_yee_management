@@ -11,6 +11,6 @@ namespace Toplanti.Core.Utilities.Security.JWT
     {
         AccessToken CreateZoomToken();
         Task<string> CreateAccessToken();
-        AccessToken CreateToken(User user, List<OperationClaim> operationClaims);
+        AccessToken CreateToken(User user, List<OperationClaim> operationClaims, string? department = null);
     }
 }

@@ -72,7 +72,7 @@ namespace Toplanti.Core.Utilities.Security.JWT
             return accessToken;
         }
 
-        public AccessToken CreateToken(User user, List<OperationClaim> operationClaims)
+        public AccessToken CreateToken(User user, List<OperationClaim> operationClaims, string? department = null)
         {
             _accessTokenExpiration = DateTime.Now.AddMinutes(_tokenOptions.AccessTokenExpiration);
             var securityKey = SecurityKeyHelper.CreateSecurityKey(_tokenOptions.SecurityKey);
@@ -82,6 +82,10 @@ namespace Toplanti.Core.Utilities.Security.JWT
             claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()));
             claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Email, user.Email));
             claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, $"{user.FirstName} {user.LastName}"));
+            if (!string.IsNullOrWhiteSpace(department))
+            {
+                claims.Add(new System.Security.Claims.Claim("department", department));
+            }
             
             foreach (var role in operationClaims)
             {

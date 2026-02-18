@@ -12,7 +12,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Toplanti.Business.DependencyResolvers.Autofac;
 using Toplanti.Core.Entities.Concrete;
@@ -124,7 +126,41 @@ string[] origins = { };
 var corsOriginSiteler = configuration["Cors:IzinVerilenSiteler"];
 if (!string.IsNullOrEmpty(corsOriginSiteler))
 {
-    origins = corsOriginSiteler.Split(",", StringSplitOptions.RemoveEmptyEntries);
+    origins = corsOriginSiteler.Split(",", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+var originList = new List<string>(origins)
+{
+    "http://localhost:8082"
+};
+if (!originList.Contains("http://localhost:8082", StringComparer.OrdinalIgnoreCase))
+{
+    originList.Add("http://localhost:8082");
+}
+originList = originList
+    .Where(o => !string.IsNullOrWhiteSpace(o))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToList();
+
+bool IsAllowedOrigin(string origin)
+{
+    if (string.IsNullOrWhiteSpace(origin))
+    {
+        return false;
+    }
+
+    if (originList.Contains(origin, StringComparer.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    if (Uri.TryCreate(origin, UriKind.Absolute, out var parsedUri))
+    {
+        return parsedUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase)
+            && parsedUri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            && parsedUri.Port > 0;
+    }
+
+    return false;
 }
 
 builder.Services.AddCors(options =>
@@ -134,17 +170,19 @@ builder.Services.AddCors(options =>
         {
             policyBuilder
                 .SetPreflightMaxAge(TimeSpan.FromSeconds(5000))
-                .AllowAnyOrigin()
+                .SetIsOriginAllowed(IsAllowedOrigin)
                 .AllowAnyMethod()
-                .AllowAnyHeader();
+                .AllowAnyHeader()
+                .AllowCredentials();
         });
     options.AddPolicy("CorsOzel",
         policyBuilder =>
         {
             policyBuilder.SetPreflightMaxAge(TimeSpan.FromSeconds(5000))
-                .WithOrigins(origins)
+                .SetIsOriginAllowed(IsAllowedOrigin)
                 .AllowAnyHeader()
-                .AllowAnyMethod();
+                .AllowAnyMethod()
+                .AllowCredentials();
         });
 });
 
@@ -184,12 +222,18 @@ if (app.Environment.IsDevelopment())
 app.ConfigureCustomExceptionMiddleware();
 
 var herIstegeAcik = Convert.ToBoolean(configuration["Cors:HerIstegeAcik"] ?? "true");
-app.UseCors(herIstegeAcik ? "CorsAcik" : "CorsOzel");
 
 app.UseHttpsRedirection();
-
-app.UseRouting();
 app.UseCookiePolicy();
+app.UseRouting();
+if (herIstegeAcik)
+{
+    app.UseCors("CorsAcik");
+}
+else
+{
+    app.UseCors("CorsOzel");
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
