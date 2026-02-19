@@ -64,6 +64,7 @@ namespace Toplanti.WebAPI.Controllers
                 }
                 return BadRequest(userToLogin);
             }
+            userToLogin.Data.Department ??= string.Empty;
             return Ok(userToLogin);
         }
 
@@ -75,6 +76,7 @@ namespace Toplanti.WebAPI.Controllers
             {
                 return Unauthorized(result);
             }
+            result.Data.Department ??= string.Empty;
             return Ok(result);
         }
     }

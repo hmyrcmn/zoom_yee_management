@@ -14,6 +14,7 @@ namespace Toplanti.Entities.DTOs
         public string ImagePath { get; set; } = string.Empty;
         public string ClassName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
+        public string Department { get; set; } = string.Empty;
         public int? CenterId { get; set; }
         public int? CountryId { get; set; }
         public string? CountryName { get; set; }

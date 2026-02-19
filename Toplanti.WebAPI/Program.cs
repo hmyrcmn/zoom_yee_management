@@ -122,69 +122,25 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Toplanti.WebAPI", Version = "v1" });
 });
 
-// CORS Settings
-string[] origins = { };
-var corsOriginSiteler = configuration["Cors:IzinVerilenSiteler"];
-if (!string.IsNullOrEmpty(corsOriginSiteler))
-{
-    origins = corsOriginSiteler.Split(",", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-}
-var originList = new List<string>(origins)
-{
-    "http://localhost:8082"
-};
-if (!originList.Contains("http://localhost:8082", StringComparer.OrdinalIgnoreCase))
-{
-    originList.Add("http://localhost:8082");
-}
-originList = originList
-    .Where(o => !string.IsNullOrWhiteSpace(o))
-    .Distinct(StringComparer.OrdinalIgnoreCase)
-    .ToList();
-
-bool IsAllowedOrigin(string origin)
-{
-    if (string.IsNullOrWhiteSpace(origin))
-    {
-        return false;
-    }
-
-    if (originList.Contains(origin, StringComparer.OrdinalIgnoreCase))
-    {
-        return true;
-    }
-
-    if (Uri.TryCreate(origin, UriKind.Absolute, out var parsedUri))
-    {
-        return parsedUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase)
-            && parsedUri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-            && parsedUri.Port > 0;
-    }
-
-    return false;
-}
-
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("CorsAcik",
-        policyBuilder =>
-        {
-            policyBuilder
-                .SetPreflightMaxAge(TimeSpan.FromSeconds(5000))
-                .SetIsOriginAllowed(IsAllowedOrigin)
-                .AllowAnyMethod()
-                .AllowAnyHeader()
-                .AllowCredentials();
-        });
-    options.AddPolicy("CorsOzel",
-        policyBuilder =>
-        {
-            policyBuilder.SetPreflightMaxAge(TimeSpan.FromSeconds(5000))
-                .SetIsOriginAllowed(IsAllowedOrigin)
-                .AllowAnyHeader()
-                .AllowAnyMethod()
-                .AllowCredentials();
-        });
+    options.AddPolicy("CorsAcik", policyBuilder =>
+    {
+        policyBuilder
+            .WithOrigins("http://localhost:8082")
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+
+    options.AddPolicy("CorsOzel", policyBuilder =>
+    {
+        policyBuilder
+            .WithOrigins("http://localhost:8082")
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
 });
 
 var ssoApi = configuration.GetSection("SsoApi").Get<ApiSettings>();
@@ -224,7 +180,10 @@ app.ConfigureCustomExceptionMiddleware();
 
 var herIstegeAcik = Convert.ToBoolean(configuration["Cors:HerIstegeAcik"] ?? "true");
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseCookiePolicy();
 app.UseRouting();
 if (herIstegeAcik)

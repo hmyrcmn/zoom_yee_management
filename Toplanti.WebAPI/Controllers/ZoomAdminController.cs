@@ -18,17 +18,15 @@ namespace Toplanti.WebAPI.Controllers
         }
 
         [HttpGet("users")]
-        public ActionResult GetUsers()
+        public async Task<ActionResult> GetUsers()
         {
-            // Temporary simulated payload for UI table population.
-            var users = new List<object>
+            var result = await _zoomService.GetWorkspaceUsers();
+            if (!result.Success)
             {
-                new { email = "ali.yilmaz@yee.org.tr", first_name = "Ali", last_name = "Yilmaz", status = "active" },
-                new { email = "ayse.kaya@yee.org.tr", first_name = "Ayse", last_name = "Kaya", status = "active" },
-                new { email = "mehmet.demir@yee.org.tr", first_name = "Mehmet", last_name = "Demir", status = "inactive" }
-            };
+                return BadRequest(result);
+            }
 
-            return Ok(users);
+            return Ok(result);
         }
 
         [HttpPost("add-user")]

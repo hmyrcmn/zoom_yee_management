@@ -14,6 +14,8 @@ using Toplanti.Core.Entities.Concrete;
 using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
+using Toplanti.Core.Extensisons;
+using Toplanti.Core.Utilities.Security.Hashing;
 
 namespace Toplanti.Business.Concrete
 {
@@ -67,6 +69,7 @@ namespace Toplanti.Business.Concrete
                         var ssoUserInfo = _ssoApi.GetSsoUserInfoId(userSsoId);
                         if (ssoUserInfo != null)
                         {
+                            ssoUserInfo.Department = userPrincipal?.Department() ?? string.Empty;
                             return new SuccessDataResult<UserStudentDto>(ssoUserInfo, "Kullanıcı Bilgileri");
                         }
                     }
@@ -132,6 +135,7 @@ namespace Toplanti.Business.Concrete
                 FirstName = localUser?.FirstName ?? ExtractFirstName(fullNameFromClaim),
                 LastName = localUser?.LastName ?? ExtractLastName(fullNameFromClaim),
                 Email = localUser?.Email ?? emailFromClaim ?? string.Empty,
+                Department = userPrincipal?.Department() ?? string.Empty,
                 ImagePath = string.Empty,
                 ClassName = string.Empty,
                 ProfileImage = string.Empty
@@ -167,14 +171,7 @@ namespace Toplanti.Business.Concrete
             var ldapUser = _ldapService.ValidateUser(userForLoginDto.Email, userForLoginDto.Password);
             if (ldapUser == null)
             {
-                if (CanUseWebmasterBypass(userForLoginDto.Email))
-                {
-                    ldapUser = CreateWebmasterBypassLdapUser();
-                }
-                else
-                {
-                    return new ErrorDataResult<AccessToken>("Kullanıcı adı veya şifre hatalı");
-                }
+                return new ErrorDataResult<AccessToken>("Kullanıcı adı veya şifre hatalı");
             }
 
             var isWebmaster = string.Equals(userForLoginDto.Email, "webmaster@yee.org.tr", StringComparison.OrdinalIgnoreCase)
@@ -222,6 +219,35 @@ namespace Toplanti.Business.Concrete
                 _userDal.Update(userToCheck);
             }
 
+            // 2.1 Password verification must be explicit and strict.
+            bool hasStoredPassword =
+                userToCheck.PasswordHash != null && userToCheck.PasswordHash.Length > 0 &&
+                userToCheck.PasswordSalt != null && userToCheck.PasswordSalt.Length > 0;
+
+            bool isVerified;
+            if (hasStoredPassword)
+            {
+                isVerified = HashingHelper.VerifyPasswordHash(
+                    userForLoginDto.Password,
+                    userToCheck.PasswordHash,
+                    userToCheck.PasswordSalt);
+            }
+            else
+            {
+                // First successful LDAP login: seed local hash for future consistency checks.
+                HashingHelper.CreatePasswordHash(userForLoginDto.Password, out var passwordHash, out var passwordSalt);
+                userToCheck.PasswordHash = passwordHash;
+                userToCheck.PasswordSalt = passwordSalt;
+                _userDal.Update(userToCheck);
+                isVerified = HashingHelper.VerifyPasswordHash(userForLoginDto.Password, passwordHash, passwordSalt);
+            }
+
+            Console.WriteLine($"Password verify result for {userToCheck.Email}: {isVerified}");
+            if (!isVerified)
+            {
+                return new ErrorDataResult<AccessToken>("Kullanıcı adı veya şifre hatalı");
+            }
+
             // 3. Sync Claims from LDAP Groups
             SyncUserClaims(userToCheck!.Id, ldapUser.Groups, ldapUser.Department);
 
@@ -230,34 +256,6 @@ namespace Toplanti.Business.Concrete
             var accessToken = _tokenHelper.CreateToken(userToCheck, userClaims, ldapUser.Department);
             
             return new SuccessDataResult<AccessToken>(accessToken, "Giriş başarılı");
-        }
-
-        private bool CanUseWebmasterBypass(string email)
-        {
-            if (!string.Equals(email, "webmaster@yee.org.tr", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            bool hasTestHeader = _httpContextAccessor.HttpContext?.Request?.Headers?.ContainsKey("Test-Header") == true;
-            bool isDebugBuild = false;
-#if DEBUG
-            isDebugBuild = true;
-#endif
-            return hasTestHeader || isDebugBuild;
-        }
-
-        private LdapUser CreateWebmasterBypassLdapUser()
-        {
-            return new LdapUser
-            {
-                Username = "webmaster",
-                Name = "Webmaster",
-                Surname = "Test",
-                Email = "webmaster@yee.org.tr",
-                Department = "Bilişim",
-                Groups = new List<string>()
-            };
         }
 
         private void SyncUserClaims(int userId, List<string> ldapGroups, string department)

@@ -119,7 +119,8 @@ namespace Toplanti.Core.Utilities.Security.JWT
             return new AccessToken
             {
                 Token = token,
-                Expiration = _accessTokenExpiration
+                Expiration = _accessTokenExpiration,
+                Department = department ?? string.Empty
             };
         }
     }

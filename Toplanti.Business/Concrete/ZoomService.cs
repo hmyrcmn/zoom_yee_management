@@ -9,6 +9,7 @@ using Toplanti.Business.BusinessAspects.Autofac;
 using Toplanti.Core.Utilities.Results;
 using Toplanti.Core.Utilities.Security.JWT;
 using Toplanti.Entities.DTOs;
+using Toplanti.Entities.Zoom;
 
 namespace Toplanti.Business.Concrete
 {
@@ -22,6 +23,54 @@ namespace Toplanti.Business.Concrete
         {
             _httpClientFactory = httpClientFactory;
             _tokenHelper = tokenHelper;
+        }
+
+        [SecuredOperation("Admin")]
+        public async Task<IDataResult<List<ZoomUsers>>> GetWorkspaceUsers()
+        {
+            try
+            {
+                var client = await CreateZoomClient();
+                var allUsers = new List<ZoomUsers>();
+                var nextPageToken = string.Empty;
+
+                do
+                {
+                    var endpoint = $"{BaseApiUrl}users?page_size=300";
+                    if (!string.IsNullOrWhiteSpace(nextPageToken))
+                    {
+                        endpoint += $"&next_page_token={Uri.EscapeDataString(nextPageToken)}";
+                    }
+
+                    var response = await client.GetAsync(endpoint);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errorBody = await response.Content.ReadAsStringAsync();
+                        return new ErrorDataResult<List<ZoomUsers>>(
+                            $"Zoom kullanıcı listesi alınamadı: {(int)response.StatusCode} - {errorBody}");
+                    }
+
+                    var page = await response.Content.ReadFromJsonAsync<ZoomUserList>();
+                    if (page?.users != null && page.users.Count > 0)
+                    {
+                        allUsers.AddRange(page.users);
+                    }
+
+                    nextPageToken = page?.next_page_token ?? string.Empty;
+                } while (!string.IsNullOrWhiteSpace(nextPageToken));
+
+                var workspaceUsers = allUsers
+                    .Where(u => u != null && (IsStatus(u.status, "active") || IsStatus(u.status, "pending")))
+                    .GroupBy(u => (u.email ?? string.Empty).Trim().ToLowerInvariant())
+                    .Select(g => g.First())
+                    .ToList();
+
+                return new SuccessDataResult<List<ZoomUsers>>(workspaceUsers);
+            }
+            catch (Exception ex)
+            {
+                return new ErrorDataResult<List<ZoomUsers>>($"Zoom kullanıcı listesi alınırken hata oluştu: {ex.Message}");
+            }
         }
 
         public async Task<bool> IsUserActiveInZoom(string email)
@@ -119,6 +168,11 @@ namespace Toplanti.Business.Concrete
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             return client;
+        }
+
+        private static bool IsStatus(string status, string expected)
+        {
+            return string.Equals((status ?? string.Empty).Trim(), expected, StringComparison.OrdinalIgnoreCase);
         }
     }
 }
