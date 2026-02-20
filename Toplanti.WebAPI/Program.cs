@@ -22,6 +22,7 @@ using Toplanti.DataAccess.Concrete.EntityFramework.Contexts;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://localhost:5000");
 
 // Autofac Configuration
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory())
@@ -165,7 +166,22 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ToplantiContext>();
-    context.Database.EnsureCreated();
+    var connectionString = context.Database.GetConnectionString();
+    if (!string.IsNullOrWhiteSpace(connectionString))
+    {
+        try
+        {
+            context.Database.EnsureCreated();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: EnsureCreated skipped - {ex.Message}");
+        }
+    }
+    else
+    {
+        Console.WriteLine("Warning: EnsureCreated skipped - ConnectionString is empty.");
+    }
 }
 
 // Configure the HTTP request pipeline.
@@ -178,22 +194,20 @@ if (app.Environment.IsDevelopment())
 
 app.ConfigureCustomExceptionMiddleware();
 
-var herIstegeAcik = Convert.ToBoolean(configuration["Cors:HerIstegeAcik"] ?? "true");
-
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
 app.UseCookiePolicy();
 app.UseRouting();
-if (herIstegeAcik)
-{
-    app.UseCors("CorsAcik");
-}
-else
-{
-    app.UseCors("CorsOzel");
-}
+app.Use(async (context, next) => {
+    if (context.Request.Method == "OPTIONS") {
+        context.Response.Headers.Add("Access-Control-Allow-Origin", "http://localhost:8082");
+        context.Response.Headers.Add("Access-Control-Allow-Headers", "*");
+        context.Response.Headers.Add("Access-Control-Allow-Methods", "*");
+        context.Response.Headers.Add("Access-Control-Allow-Credentials", "true");
+        context.Response.StatusCode = 200;
+        return;
+    }
+    await next();
+});
+app.UseCors("CorsAcik");
 
 app.UseAuthentication();
 app.UseAuthorization();

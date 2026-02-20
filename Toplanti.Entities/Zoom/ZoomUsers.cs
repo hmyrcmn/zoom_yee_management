@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace Toplanti.Entities.Zoom
@@ -9,11 +10,16 @@ namespace Toplanti.Entities.Zoom
     public class ZoomUsers
     {
         public string id { get; set; }
+        [JsonPropertyName("first_name")]
         public string first_name { get; set; }
+
+        [JsonPropertyName("last_name")]
         public string last_name { get; set; }
         public string email { get; set; }
         public int type { get; set; }
-        public string pmi { get; set; }
+        [JsonPropertyName("pmi")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+        public long? pmi { get; set; }
         public string timezone { get; set; }
         public int verified { get; set; }
         public string dept { get; set; }

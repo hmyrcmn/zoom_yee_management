@@ -42,5 +42,16 @@ namespace Toplanti.DataAccess.Concrete.EntityFramework.Contexts
             }
         }
 
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<User>()
+                .HasIndex(u => u.Email)
+                .IsUnique()
+                .HasDatabaseName("UX_Users_Email")
+                .HasFilter("[Email] IS NOT NULL");
+
+            base.OnModelCreating(modelBuilder);
+        }
+
     }
 }

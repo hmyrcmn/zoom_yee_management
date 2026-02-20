@@ -17,9 +17,9 @@
     <PackageReference Include="Castle.Core" Version="5.1.1" />
     <PackageReference Include="MailKit" Version="4.4.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
-    <PackageReference Include="MimeKit" Version="4.4.0" />
+    <PackageReference Include="MimeKit" Version="4.15.0" />
     <PackageReference Include="Novell.Directory.Ldap.NETStandard" Version="3.6.0" />
-    <PackageReference Include="RestSharp" Version="111.4.1" />
+    <PackageReference Include="RestSharp" Version="113.1.0" />
   </ItemGroup>
 
   <ItemGroup>

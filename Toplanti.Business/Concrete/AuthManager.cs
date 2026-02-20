@@ -16,6 +16,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Toplanti.Core.Extensisons;
 using Toplanti.Core.Utilities.Security.Hashing;
+using System.Globalization;
 
 namespace Toplanti.Business.Concrete
 {
@@ -181,12 +182,10 @@ namespace Toplanti.Business.Concrete
                 ldapUser.Department = "Bilişim";
             }
 
-            var isBilisimUser = string.Equals(ldapUser.Department?.Trim(), "Bilişim", StringComparison.OrdinalIgnoreCase);
-            var shouldSkipZoomCheck = isWebmaster;
-            var isActiveInZoom = shouldSkipZoomCheck || isBilisimUser || _zoomService.IsUserActiveInZoom(ldapUser.Email).GetAwaiter().GetResult();
+            var isActiveInZoom = _zoomService.IsUserActiveInZoom(ldapUser.Email).GetAwaiter().GetResult();
             if (!isActiveInZoom)
             {
-                return new ErrorDataResult<AccessToken>("Lütfen Zoom kaydı için Bilgi İşlem ile iletişime geçiniz.");
+                return new ErrorDataResult<AccessToken>("Zoom kaydınız aktifleşmemiş. Lütfen Bilişim birimi ile iletişime geçin.");
             }
 
             // 2. Sync Logic (Check Local DB)
@@ -224,28 +223,11 @@ namespace Toplanti.Business.Concrete
                 userToCheck.PasswordHash != null && userToCheck.PasswordHash.Length > 0 &&
                 userToCheck.PasswordSalt != null && userToCheck.PasswordSalt.Length > 0;
 
-            bool isVerified;
-            if (hasStoredPassword)
-            {
-                isVerified = HashingHelper.VerifyPasswordHash(
-                    userForLoginDto.Password,
-                    userToCheck.PasswordHash,
-                    userToCheck.PasswordSalt);
-            }
-            else
-            {
-                // First successful LDAP login: seed local hash for future consistency checks.
-                HashingHelper.CreatePasswordHash(userForLoginDto.Password, out var passwordHash, out var passwordSalt);
-                userToCheck.PasswordHash = passwordHash;
-                userToCheck.PasswordSalt = passwordSalt;
-                _userDal.Update(userToCheck);
-                isVerified = HashingHelper.VerifyPasswordHash(userForLoginDto.Password, passwordHash, passwordSalt);
-            }
-
-            Console.WriteLine($"Password verify result for {userToCheck.Email}: {isVerified}");
+            string verifyFailureMessage;
+            var isVerified = EnsurePasswordHashAndVerify(userToCheck, userForLoginDto.Password, hasStoredPassword, out verifyFailureMessage);
             if (!isVerified)
             {
-                return new ErrorDataResult<AccessToken>("Kullanıcı adı veya şifre hatalı");
+                return new ErrorDataResult<AccessToken>(verifyFailureMessage);
             }
 
             // 3. Sync Claims from LDAP Groups
@@ -256,6 +238,52 @@ namespace Toplanti.Business.Concrete
             var accessToken = _tokenHelper.CreateToken(userToCheck, userClaims, ldapUser.Department);
             
             return new SuccessDataResult<AccessToken>(accessToken, "Giriş başarılı");
+        }
+
+        private bool EnsurePasswordHashAndVerify(User user, string plainPassword, bool hasStoredPassword, out string failureMessage)
+        {
+            failureMessage = "Kullanıcı adı veya şifre hatalı";
+
+            if (!hasStoredPassword)
+            {
+                try
+                {
+                    HashingHelper.CreatePasswordHash(plainPassword, out var passwordHash, out var passwordSalt);
+                    user.PasswordHash = passwordHash;
+                    user.PasswordSalt = passwordSalt;
+
+                    // _userDal.Update internally calls SaveChanges (EfEntityRepositoryBase).
+                    _userDal.Update(user);
+
+                    var persistedUser = _userDal.Get(u => u.Id == user.Id);
+                    var persistedHashAvailable = persistedUser?.PasswordHash != null && persistedUser.PasswordHash.Length > 0
+                                                && persistedUser.PasswordSalt != null && persistedUser.PasswordSalt.Length > 0;
+                    if (!persistedHashAvailable)
+                    {
+                        failureMessage = "Şifre bilgisi veritabanına kaydedilemedi.";
+                        return false;
+                    }
+
+                    user.PasswordHash = persistedUser.PasswordHash;
+                    user.PasswordSalt = persistedUser.PasswordSalt;
+                    hasStoredPassword = true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Password hash persistence failed for {user.Email}: {ex.Message}");
+                    failureMessage = "Şifre bilgisi veritabanına kaydedilemedi.";
+                    return false;
+                }
+            }
+
+            var canVerify = hasStoredPassword
+                            && user.PasswordHash != null
+                            && user.PasswordHash.Length > 0
+                            && user.PasswordSalt != null
+                            && user.PasswordSalt.Length > 0;
+            var isVerified = canVerify && HashingHelper.VerifyPasswordHash(plainPassword, user.PasswordHash, user.PasswordSalt);
+            Console.WriteLine($"Password verify result for {user.Email}: {isVerified}");
+            return isVerified;
         }
 
         private void SyncUserClaims(int userId, List<string> ldapGroups, string department)
@@ -280,7 +308,7 @@ namespace Toplanti.Business.Concrete
                 targetClaimNames.Add("User");
             }
 
-            if (string.Equals(department, "Bilişim", StringComparison.OrdinalIgnoreCase))
+            if (IsBilisimDepartment(department))
             {
                 targetClaimNames.Add("Admin");
             }
@@ -371,6 +399,26 @@ namespace Toplanti.Business.Concrete
             var systemClaims = _operationClaimDal.GetAll(c => c.Active && !c.Deleted);
 
             return systemClaims.Where(sc => userClaims.Any(uc => uc.OperationClaimId == sc.Id)).ToList();
+        }
+
+        private static bool IsBilisimDepartment(string department)
+        {
+            if (string.IsNullOrWhiteSpace(department))
+            {
+                return false;
+            }
+
+            var normalized = department
+                .Trim()
+                .ToLowerInvariant()
+                .Normalize(NormalizationForm.FormD);
+
+            var chars = normalized
+                .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                .Select(c => c == 'ı' ? 'i' : c)
+                .ToArray();
+
+            return new string(chars) == "bilisim";
         }
     }
 }
