@@ -31,13 +31,19 @@ namespace Toplanti.Business.BusinessAspects.Autofac
             var department = httpContext?.User?.Department();
             foreach (var role in _roles)
             {
-                if (roleClaims.Any(rc => string.Equals(rc, role, StringComparison.OrdinalIgnoreCase)))
+                var normalizedRole = role?.Trim() ?? string.Empty;
+
+                // Admin access is strictly bound to Bilişim department.
+                if (normalizedRole.Equals("Admin", StringComparison.OrdinalIgnoreCase))
                 {
-                    return;
+                    if (IsBilisimDepartment(department))
+                    {
+                        return;
+                    }
+                    continue;
                 }
 
-                if (role.Trim().Equals("Admin", StringComparison.OrdinalIgnoreCase) &&
-                    IsBilisimDepartment(department))
+                if (roleClaims.Any(rc => string.Equals(rc, normalizedRole, StringComparison.OrdinalIgnoreCase)))
                 {
                     return;
                 }

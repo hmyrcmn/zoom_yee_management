@@ -20,6 +20,7 @@ using Toplanti.Business.DependencyResolvers.Autofac;
 using Toplanti.Core.Entities.Concrete;
 using Toplanti.DataAccess.Concrete.EntityFramework.Contexts;
 using Microsoft.EntityFrameworkCore;
+using Toplanti.WebAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://localhost:5000");
@@ -119,6 +120,7 @@ builder.Services.AddAuthentication(options => {
 builder.Services.AddControllers();
 builder.Services.AddDbContext<ToplantiContext>();
 builder.Services.AddHttpClient("ZoomApi");
+builder.Services.AddScoped<IZoomAdminAuditService, ZoomAdminAuditService>();
 
 builder.Services.AddSwaggerGen(c =>
 {

@@ -1,13 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Toplanti.Business.Abstract;
-using Toplanti.DataAccess.Concrete.EntityFramework.Contexts;
 using Toplanti.Entities.DTOs;
+using Toplanti.WebAPI.Services;
 
 namespace Toplanti.WebAPI.Controllers
 {
@@ -16,12 +15,12 @@ namespace Toplanti.WebAPI.Controllers
     public class ZoomAdminController : ControllerBase
     {
         private readonly IZoomService _zoomService;
-        private readonly ToplantiContext _context;
+        private readonly IZoomAdminAuditService _zoomAdminAuditService;
 
-        public ZoomAdminController(IZoomService zoomService, ToplantiContext context)
+        public ZoomAdminController(IZoomService zoomService, IZoomAdminAuditService zoomAdminAuditService)
         {
             _zoomService = zoomService;
-            _context = context;
+            _zoomAdminAuditService = zoomAdminAuditService;
         }
 
         [HttpGet("users")]
@@ -30,7 +29,6 @@ namespace Toplanti.WebAPI.Controllers
             try
             {
                 var result = await _zoomService.GetWorkspaceUsers();
-                LogZoomAction("GET_USERS", null, result.Success, result.Message);
                 if (!result.Success)
                 {
                     if (IsAuthorizationFailure(result.Message))
@@ -45,12 +43,10 @@ namespace Toplanti.WebAPI.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                LogZoomAction("GET_USERS", null, false, ex.Message);
                 return StatusCode(403, new { success = false, message = ex.Message });
             }
             catch (System.Exception ex)
             {
-                LogZoomAction("GET_USERS", null, false, ex.Message);
                 System.Console.WriteLine($"[ZoomAdminController:GetUsers] Exception: {ex.Message}");
                 return BadRequest(new { success = false, message = $"Zoom users alÄ±nÄ±rken hata: {ex.Message}" });
             }
@@ -81,7 +77,6 @@ namespace Toplanti.WebAPI.Controllers
                 };
 
                 var result = await _zoomService.AddUserToZoom(mappedRequest);
-                LogZoomAction("ADD_USER", mappedRequest.email, result.Success, result.Message);
                 if (!result.Success)
                 {
                     var msg = result.Message ?? string.Empty;
@@ -94,16 +89,21 @@ namespace Toplanti.WebAPI.Controllers
                     return BadRequest(new { success = false, message = result.Message });
                 }
 
+                await _zoomAdminAuditService.LogAsync(
+                    GetRequesterEmail(),
+                    "ADD_USER",
+                    mappedRequest.email,
+                    "Success",
+                    result.Message);
+
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
             {
-                LogZoomAction("ADD_USER", request?.email, false, ex.Message);
                 return StatusCode(403, new { success = false, message = ex.Message });
             }
             catch (System.Exception ex)
             {
-                LogZoomAction("ADD_USER", request?.email, false, ex.Message);
                 System.Console.WriteLine($"[ZoomAdminController:AddUserToZoom] Exception: {ex.Message}");
                 return BadRequest(new { success = false, message = $"Zoom user eklenirken hata: {ex.Message}" });
             }
@@ -114,8 +114,13 @@ namespace Toplanti.WebAPI.Controllers
         {
             try
             {
+                var requesterEmail = GetRequesterEmail();
+                if (IsSameEmail(requesterEmail, email))
+                {
+                    return StatusCode(403, new { success = false, message = "Kendi hesabınızı silemezsiniz!" });
+                }
+
                 var result = await _zoomService.DeleteUserFromZoom(email);
-                LogZoomAction("DELETE_USER", email, result.Success, result.Message);
                 if (!result.Success)
                 {
                     if (IsAuthorizationFailure(result.Message))
@@ -126,16 +131,21 @@ namespace Toplanti.WebAPI.Controllers
                     return BadRequest(result);
                 }
 
+                await _zoomAdminAuditService.LogAsync(
+                    requesterEmail,
+                    "DELETE_USER",
+                    email,
+                    "Success",
+                    result.Message);
+
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
             {
-                LogZoomAction("DELETE_USER", email, false, ex.Message);
                 return StatusCode(403, new { success = false, message = ex.Message });
             }
             catch (System.Exception ex)
             {
-                LogZoomAction("DELETE_USER", email, false, ex.Message);
                 System.Console.WriteLine($"[ZoomAdminController:DeleteUserFromZoom] Exception: {ex.Message}");
                 return BadRequest(new { success = false, message = $"Zoom user silinirken hata: {ex.Message}" });
             }
@@ -146,8 +156,19 @@ namespace Toplanti.WebAPI.Controllers
         {
             try
             {
-                var result = await _zoomService.DeleteUsersFromZoom(request?.Emails ?? new System.Collections.Generic.List<string>());
-                LogZoomAction("BULK_DELETE", string.Join(",", request?.Emails ?? new List<string>()), result.Success, result.Message);
+                var requesterEmail = GetRequesterEmail();
+                var targetEmails = (request?.Emails ?? new List<string>())
+                    .Where(email => !string.IsNullOrWhiteSpace(email))
+                    .Select(email => email.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (targetEmails.Any(email => IsSameEmail(requesterEmail, email)))
+                {
+                    return StatusCode(403, new { success = false, message = "Kendi hesabınızı silemezsiniz!" });
+                }
+
+                var result = await _zoomService.DeleteUsersFromZoom(targetEmails);
                 if (!result.Success)
                 {
                     if (IsAuthorizationFailure(result.Message))
@@ -158,16 +179,21 @@ namespace Toplanti.WebAPI.Controllers
                     return BadRequest(result);
                 }
 
+                await _zoomAdminAuditService.LogAsync(
+                    requesterEmail,
+                    "BULK_DELETE",
+                    string.Join(",", targetEmails),
+                    "Success",
+                    result.Message);
+
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
             {
-                LogZoomAction("BULK_DELETE", string.Join(",", request?.Emails ?? new List<string>()), false, ex.Message);
                 return StatusCode(403, new { success = false, message = ex.Message });
             }
             catch (System.Exception ex)
             {
-                LogZoomAction("BULK_DELETE", string.Join(",", request?.Emails ?? new List<string>()), false, ex.Message);
                 System.Console.WriteLine($"[ZoomAdminController:BulkDeleteUsersFromZoom] Exception: {ex.Message}");
                 return BadRequest(new { success = false, message = $"Zoom bulk delete sÄ±rasÄ±nda hata: {ex.Message}" });
             }
@@ -185,93 +211,24 @@ namespace Toplanti.WebAPI.Controllers
                 || message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase);
         }
 
-        private void EnsureZoomAuditTableAndEmailUniqueIndex()
+        private string GetRequesterEmail()
         {
-            const string ensureAuditTable = @"
-IF OBJECT_ID('dbo.ZoomActionLogs', 'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.ZoomActionLogs (
-        Id INT IDENTITY(1,1) PRIMARY KEY,
-        UserId INT NULL,
-        Action NVARCHAR(100) NOT NULL,
-        TargetEmail NVARCHAR(320) NULL,
-        Success BIT NOT NULL,
-        Message NVARCHAR(2000) NULL,
-        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-    );
-END";
-            _context.Database.ExecuteSqlRaw(ensureAuditTable);
+            var email = User?.FindFirst(ClaimTypes.Email)?.Value;
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                return email.Trim();
+            }
 
-            const string ensureUserEmailUniqueIndex = @"
-SET QUOTED_IDENTIFIER ON;
-
-IF EXISTS (
-    SELECT 1
-    FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_NAME = 'Users'
-      AND COLUMN_NAME = 'Email'
-      AND DATA_TYPE = 'nvarchar'
-      AND CHARACTER_MAXIMUM_LENGTH = -1
-)
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dbo.Users WHERE Email IS NOT NULL AND LEN(Email) > 320)
-    BEGIN
-        ALTER TABLE dbo.Users ALTER COLUMN Email NVARCHAR(320) NULL;
-    END
-END
-
-IF NOT EXISTS (
-    SELECT 1
-    FROM sys.indexes
-    WHERE object_id = OBJECT_ID('dbo.Users')
-      AND name = 'UX_Users_Email'
-)
-BEGIN
-    IF NOT EXISTS (
-        SELECT Email
-        FROM dbo.Users
-        WHERE Email IS NOT NULL
-        GROUP BY Email
-        HAVING COUNT(*) > 1
-    )
-    BEGIN
-        CREATE UNIQUE INDEX UX_Users_Email ON dbo.Users(Email) WHERE Email IS NOT NULL;
-    END
-END";
-            _context.Database.ExecuteSqlRaw(ensureUserEmailUniqueIndex);
+            email = User?.FindFirst("email")?.Value;
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim();
         }
 
-        private void LogZoomAction(string action, string? targetEmail, bool success, string? message)
+        private static bool IsSameEmail(string? left, string? right)
         {
-            try
-            {
-                EnsureZoomAuditTableAndEmailUniqueIndex();
-
-                int? userId = null;
-                var userIdClaim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (int.TryParse(userIdClaim, out var parsed))
-                {
-                    userId = parsed;
-                }
-
-                const string insertSql = @"
-INSERT INTO dbo.ZoomActionLogs (UserId, Action, TargetEmail, Success, Message, CreatedAt)
-VALUES (@UserId, @Action, @TargetEmail, @Success, @Message, SYSUTCDATETIME())";
-
-                var parameters = new[]
-                {
-                    new SqlParameter("@UserId", (object?)userId ?? DBNull.Value),
-                    new SqlParameter("@Action", action ?? string.Empty),
-                    new SqlParameter("@TargetEmail", (object?)targetEmail ?? DBNull.Value),
-                    new SqlParameter("@Success", success),
-                    new SqlParameter("@Message", (object?)message ?? DBNull.Value),
-                };
-                _context.Database.ExecuteSqlRaw(insertSql, parameters);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ZoomAdminController:LogZoomAction] Exception: {ex.Message}");
-            }
+            return string.Equals(
+                (left ?? string.Empty).Trim(),
+                (right ?? string.Empty).Trim(),
+                StringComparison.OrdinalIgnoreCase);
         }
     }
 }
