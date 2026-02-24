@@ -26,8 +26,9 @@ namespace Toplanti.Business.BusinessAspects.Autofac
 
         protected override void OnBefore(IInvocation invocation)
         {
-            var roleClaims = _httpContextAccessor.HttpContext.User.ClaimRoles();
-            var department = _httpContextAccessor.HttpContext.User.Department();
+            var httpContext = _httpContextAccessor?.HttpContext;
+            var roleClaims = httpContext?.User?.ClaimRoles() ?? new System.Collections.Generic.List<string>();
+            var department = httpContext?.User?.Department();
             foreach (var role in _roles)
             {
                 if (roleClaims.Any(rc => string.Equals(rc, role, StringComparison.OrdinalIgnoreCase)))
@@ -41,6 +42,12 @@ namespace Toplanti.Business.BusinessAspects.Autofac
                     return;
                 }
             }
+
+            var userId = httpContext?.User?.UserId() ?? "unknown";
+            var path = httpContext?.Request?.Path.Value ?? "unknown";
+            Console.WriteLine(
+                $"[SecuredOperation] Authorization denied. RequiredRoles={string.Join(",", _roles)} UserId={userId} UserRoles={string.Join(",", roleClaims)} Department={department ?? string.Empty} Path={path}");
+
             throw new UnauthorizedAccessException(Messages.AuthorizationDenied);
         }
 

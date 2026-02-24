@@ -41,11 +41,11 @@ namespace Toplanti.Core.Extensisons
             if (exception.GetType() == typeof(UnauthorizedAccessException))
             {
                 message = exception.Message;
-                httpContext.Response.StatusCode = 401;
+                httpContext.Response.StatusCode = 403;
 
                 return httpContext.Response.WriteAsync(new ErrorDetails
                 {
-                    StatusCode = 401,
+                    StatusCode = 403,
                     Message = message,
                 }.ToString());
             }

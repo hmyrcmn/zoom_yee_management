@@ -21,6 +21,6 @@ namespace Toplanti.Entities.DTOs
         public int? type { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("password")]
-        public string password { get; set; }
+        public string? password { get; set; }
     }
 }

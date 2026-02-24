@@ -22,7 +22,8 @@ namespace Toplanti.Entities.DTOs
         public string email { get; set; } = string.Empty;
 
         [JsonPropertyName("type")]
-        public int type { get; set; } = 1;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? type { get; set; } = 1;
 
         [JsonPropertyName("first_name")]
         public string first_name { get; set; } = string.Empty;

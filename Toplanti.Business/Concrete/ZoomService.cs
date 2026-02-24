@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -18,7 +19,6 @@ namespace Toplanti.Business.Concrete
     public class ZoomService : IZoomService
     {
         private const string BaseApiUrl = "https://api.zoom.us/v2/";
-        private static readonly DateTime InviteDebugLogUntilUtc = DateTime.UtcNow.AddMinutes(5);
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ITokenHelper _tokenHelper;
 
@@ -124,10 +124,10 @@ namespace Toplanti.Business.Concrete
                 using var doc = JsonDocument.Parse(body);
                 var root = doc.RootElement;
                 var responseEmail = root.TryGetProperty("email", out var emailEl) && emailEl.ValueKind == JsonValueKind.String
-                    ? emailEl.GetString()
+                    ? emailEl.GetString() ?? string.Empty
                     : string.Empty;
                 var status = root.TryGetProperty("status", out var statusEl) && statusEl.ValueKind == JsonValueKind.String
-                    ? statusEl.GetString()
+                    ? statusEl.GetString() ?? string.Empty
                     : string.Empty;
 
                 return string.Equals(responseEmail, email, StringComparison.OrdinalIgnoreCase) && IsStatus(status, "active");
@@ -170,39 +170,25 @@ namespace Toplanti.Business.Concrete
                     user_info = normalizedUser
                 };
 
-                if (ShouldLogInviteDebug())
-                {
-                    var outboundJson = JsonSerializer.Serialize(payload);
-                    Console.WriteLine($"[ZoomService:AddUserToZoom] Outbound JSON => {outboundJson}");
-                }
-
                 var response = await client.PostAsJsonAsync($"{BaseApiUrl}users", payload);
                 var responseBody = await response.Content.ReadAsStringAsync();
-                if (ShouldLogInviteDebug())
-                {
-                    Console.WriteLine($"[ZoomService:AddUserToZoom] Inbound JSON => {responseBody}");
-                }
-                Console.WriteLine(
-                    $"[ZoomService:AddUserToZoom] Zoom response {(int)response.StatusCode} {response.StatusCode}: {responseBody}");
 
                 if (response.StatusCode == System.Net.HttpStatusCode.BadRequest && IsInviteActionNotSupported(responseBody))
                 {
                     payload.action = "create";
 
-                    if (ShouldLogInviteDebug())
-                    {
-                        var fallbackOutboundJson = JsonSerializer.Serialize(payload);
-                        Console.WriteLine($"[ZoomService:AddUserToZoom] Fallback Outbound JSON => {fallbackOutboundJson}");
-                    }
+                    response = await client.PostAsJsonAsync($"{BaseApiUrl}users", payload);
+                    responseBody = await response.Content.ReadAsStringAsync();
+                }
+
+                if (response.StatusCode == System.Net.HttpStatusCode.BadRequest
+                    && IsTypeFieldNotSupported(responseBody)
+                    && payload.user_info.type.HasValue)
+                {
+                    payload.user_info.type = null;
 
                     response = await client.PostAsJsonAsync($"{BaseApiUrl}users", payload);
                     responseBody = await response.Content.ReadAsStringAsync();
-                    if (ShouldLogInviteDebug())
-                    {
-                        Console.WriteLine($"[ZoomService:AddUserToZoom] Fallback Inbound JSON => {responseBody}");
-                    }
-                    Console.WriteLine(
-                        $"[ZoomService:AddUserToZoom] Zoom fallback response {(int)response.StatusCode} {response.StatusCode}: {responseBody}");
                 }
 
                 if (response.StatusCode == System.Net.HttpStatusCode.Created)
@@ -210,6 +196,7 @@ namespace Toplanti.Business.Concrete
                     return new SuccessResult("Zoom user added.");
                 }
 
+                Console.WriteLine($"[ZoomService:AddUserToZoom] Non-success response: status={(int)response.StatusCode}, body={responseBody}");
                 var zoomMessage = ExtractZoomErrorMessage(responseBody);
                 return new ErrorResult(string.IsNullOrWhiteSpace(zoomMessage)
                     ? $"Zoom user add failed: {(int)response.StatusCode}"
@@ -276,7 +263,6 @@ namespace Toplanti.Business.Concrete
                 throw new InvalidOperationException("Zoom OAuth returned empty access token.");
             }
 
-            Console.WriteLine($"[ZoomService:CreateZoomClient] Access token acquired. Length: {accessToken.Length}");
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             client.DefaultRequestHeaders.Accept.Clear();
@@ -289,11 +275,6 @@ namespace Toplanti.Business.Concrete
             return string.Equals((status ?? string.Empty).Trim(), expected, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool ShouldLogInviteDebug()
-        {
-            return DateTime.UtcNow <= InviteDebugLogUntilUtc;
-        }
-
         private static string ExtractZoomErrorMessage(string errorBody)
         {
             if (string.IsNullOrWhiteSpace(errorBody))
@@ -301,9 +282,11 @@ namespace Toplanti.Business.Concrete
                 return string.Empty;
             }
 
+            var decodedBody = WebUtility.HtmlDecode(errorBody);
+
             try
             {
-                using var document = JsonDocument.Parse(errorBody);
+                using var document = JsonDocument.Parse(decodedBody);
                 if (document.RootElement.TryGetProperty("message", out var messageElement)
                     && messageElement.ValueKind == JsonValueKind.String)
                 {
@@ -317,23 +300,47 @@ namespace Toplanti.Business.Concrete
 
             try
             {
-                var xml = XDocument.Parse(errorBody);
-                var messages = xml.Descendants("message")
+                var xml = XDocument.Parse(decodedBody);
+                var nodes = xml.Root?.DescendantsAndSelf().ToList() ?? new List<XElement>();
+                var messages = nodes
+                    .Where(x => string.Equals(x.Name.LocalName, "message", StringComparison.OrdinalIgnoreCase))
                     .Select(x => (x.Value ?? string.Empty).Trim())
                     .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
-                var field = xml.Descendants("field")
+                var field = nodes
+                    .Where(x => string.Equals(x.Name.LocalName, "field", StringComparison.OrdinalIgnoreCase))
+                    .Select(x => (x.Value ?? string.Empty).Trim())
+                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+                var code = nodes
+                    .Where(x => string.Equals(x.Name.LocalName, "code", StringComparison.OrdinalIgnoreCase))
                     .Select(x => (x.Value ?? string.Empty).Trim())
                     .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
 
+                var baseMessage = string.Empty;
+
                 if (messages.Count >= 2 && !string.IsNullOrWhiteSpace(field))
                 {
-                    return $"{messages[0]} ({field}: {messages[1]})";
+                    baseMessage = $"{messages[0]} ({field}: {messages[1]})";
+                }
+                else if (messages.Count > 0)
+                {
+                    baseMessage = messages[0];
                 }
 
-                if (messages.Count > 0)
+                if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(baseMessage))
                 {
-                    return messages[0];
+                    return $"{baseMessage} (Kod: {code})";
+                }
+
+                if (!string.IsNullOrWhiteSpace(code))
+                {
+                    return $"Zoom hatası (Kod: {code})";
+                }
+
+                if (!string.IsNullOrWhiteSpace(baseMessage))
+                {
+                    return baseMessage;
                 }
             }
             catch
@@ -341,25 +348,47 @@ namespace Toplanti.Business.Concrete
                 // fallback below
             }
 
-            return errorBody;
+            if (decodedBody.TrimStart().StartsWith("<", StringComparison.Ordinal))
+            {
+                return "Zoom servisinden beklenmeyen bir XML hata yanıtı alındı.";
+            }
+
+            return decodedBody;
         }
 
         private static bool IsInviteActionNotSupported(string responseBody)
+        {
+            return IsInvalidField(responseBody, "action");
+        }
+
+        private static bool IsTypeFieldNotSupported(string responseBody)
+        {
+            return IsInvalidField(responseBody, "type");
+        }
+
+        private static bool IsInvalidField(string responseBody, string fieldName)
         {
             if (string.IsNullOrWhiteSpace(responseBody))
             {
                 return false;
             }
 
-            var compact = responseBody.ToLowerInvariant();
-            if (compact.Contains("<field>action</field>") && compact.Contains("invalid field"))
+            if (string.IsNullOrWhiteSpace(fieldName))
+            {
+                return false;
+            }
+
+            var decodedBody = WebUtility.HtmlDecode(responseBody);
+            var normalizedField = fieldName.Trim().ToLowerInvariant();
+            var compact = decodedBody.ToLowerInvariant();
+            if (compact.Contains($"<field>{normalizedField}</field>") && compact.Contains("invalid field"))
             {
                 return true;
             }
 
             try
             {
-                using var document = JsonDocument.Parse(responseBody);
+                using var document = JsonDocument.Parse(decodedBody);
                 var root = document.RootElement;
                 if (root.TryGetProperty("errors", out var errorsElement)
                     && errorsElement.ValueKind == JsonValueKind.Array)
@@ -373,8 +402,8 @@ namespace Toplanti.Business.Concrete
                             ? messageEl.GetString()
                             : string.Empty;
 
-                        if (string.Equals(field, "action", StringComparison.OrdinalIgnoreCase)
-                            && (message ?? string.Empty).Contains("invalid", StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(field, normalizedField, StringComparison.OrdinalIgnoreCase)
+                            && ContainsInvalidFieldIndicator(message))
                         {
                             return true;
                         }
@@ -386,7 +415,41 @@ namespace Toplanti.Business.Concrete
                 // XML / plain-text responses are handled above.
             }
 
+            try
+            {
+                var xml = XDocument.Parse(decodedBody);
+                var nodes = xml.Root?.DescendantsAndSelf().ToList() ?? new List<XElement>();
+
+                var fields = nodes
+                    .Where(x => string.Equals(x.Name.LocalName, "field", StringComparison.OrdinalIgnoreCase))
+                    .Select(x => (x.Value ?? string.Empty).Trim())
+                    .ToList();
+                var messages = nodes
+                    .Where(x => string.Equals(x.Name.LocalName, "message", StringComparison.OrdinalIgnoreCase))
+                    .Select(x => (x.Value ?? string.Empty).Trim())
+                    .ToList();
+
+                return fields.Any(field => string.Equals(field, normalizedField, StringComparison.OrdinalIgnoreCase))
+                    && messages.Any(ContainsInvalidFieldIndicator);
+            }
+            catch
+            {
+                // ignore xml parsing issues here
+            }
+
             return false;
+        }
+
+        private static bool ContainsInvalidFieldIndicator(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            return message.Contains("invalid", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("not allowed", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("unsupported", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

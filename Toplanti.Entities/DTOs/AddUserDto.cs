@@ -28,6 +28,7 @@ namespace Toplanti.Entities.DTOs
         public string? password { get; set; }
 
         [JsonPropertyName("type")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
         public int? type { get; set; } = 1;
     }
 }

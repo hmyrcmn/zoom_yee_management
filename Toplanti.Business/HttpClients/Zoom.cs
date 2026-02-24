@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -594,20 +595,110 @@ namespace Toplanti.Business.HttpClients
 
         public IResult CreateZoomUser(ZoomUserCreatedResponse request)
         {
-            StudentRegisterDto studentRegisterDto = new StudentRegisterDto()
+            try
             {
-                Email = request.email,
-                FirstName = request.first_name,
-                LastName = request.last_name,
-                citiesId = 107139,
-            };
+                if (request == null
+                    || string.IsNullOrWhiteSpace(request.email)
+                    || string.IsNullOrWhiteSpace(request.first_name)
+                    || string.IsNullOrWhiteSpace(request.last_name))
+                {
+                    return new ErrorResult("email, first_name ve last_name alanları zorunludur.");
+                }
 
-            var result = _ssoApi.RegisterSsoMeeting(studentRegisterDto);
+                var accessToken = _tokenHelper.CreateAccessToken().GetAwaiter().GetResult();
+                if (string.IsNullOrWhiteSpace(accessToken))
+                {
+                    return new ErrorResult("Zoom erişim anahtarı alınamadı.");
+                }
 
-            if (result)
-                return new SuccessResult(Messages.ProcessSuccess);
-            else
-                return new ErrorResult(Messages.ProcessSuccess);
+                var client = _httpClientFactory.CreateClient(APIName);
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+                var payload = new ZoomCreateUserRequest
+                {
+                    action = "invite",
+                    user_info = new ZoomInviteUserInfo
+                    {
+                        email = request.email.Trim(),
+                        first_name = request.first_name.Trim(),
+                        last_name = request.last_name.Trim(),
+                        type = request.type.GetValueOrDefault(1) <= 0 ? 1 : request.type.GetValueOrDefault(1),
+                    }
+                };
+
+                var response = client.PostAsJsonAsync(BASE_API_URL + "users", payload).GetAwaiter().GetResult();
+                var responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+
+                if (response.StatusCode == HttpStatusCode.BadRequest && IsInvalidField(responseBody, "action"))
+                {
+                    payload.action = "create";
+                    response = client.PostAsJsonAsync(BASE_API_URL + "users", payload).GetAwaiter().GetResult();
+                    responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                }
+
+                if (response.StatusCode == HttpStatusCode.BadRequest
+                    && IsInvalidField(responseBody, "type")
+                    && payload.user_info.type.HasValue)
+                {
+                    payload.user_info.type = null;
+                    response = client.PostAsJsonAsync(BASE_API_URL + "users", payload).GetAwaiter().GetResult();
+                    responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return new SuccessResult("Zoom kullanıcısı başarıyla eklendi.");
+                }
+
+                var zoomMessage = ExtractZoomErrorMessage(responseBody);
+                return new ErrorResult(string.IsNullOrWhiteSpace(zoomMessage)
+                    ? $"Zoom kullanıcı ekleme başarısız: {(int)response.StatusCode}"
+                    : zoomMessage);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ZoomHttpClient:CreateZoomUser] Exception: {ex.Message}");
+                return new ErrorResult($"Kullanıcı ekleme başarısız: {ex.Message}");
+            }
+        }
+
+        private static bool IsInvalidField(string responseBody, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(responseBody) || string.IsNullOrWhiteSpace(fieldName))
+            {
+                return false;
+            }
+
+            var body = responseBody.ToLowerInvariant();
+            var field = fieldName.Trim().ToLowerInvariant();
+
+            return body.Contains("invalid field", StringComparison.OrdinalIgnoreCase)
+                && (body.Contains($"\"field\":\"{field}\"", StringComparison.OrdinalIgnoreCase)
+                    || body.Contains($"<field>{field}</field>", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string ExtractZoomErrorMessage(string responseBody)
+        {
+            if (string.IsNullOrWhiteSpace(responseBody))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var json = JObject.Parse(responseBody);
+                var message = json["message"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    return message;
+                }
+            }
+            catch
+            {
+                // keep raw response fallback below
+            }
+
+            return responseBody;
         }
 
         public IDataResult<bool> GetExistUser()

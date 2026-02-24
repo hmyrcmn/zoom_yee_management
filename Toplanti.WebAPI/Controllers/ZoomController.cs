@@ -148,10 +148,36 @@ namespace Toplanti.WebAPI.Controllers
         }
 
         [HttpPost("createzoomuser")]
-        public ActionResult CreateZoomUser(ZoomUserCreatedResponse zoomCreateUserRequest)
+        public ActionResult CreateZoomUser([FromBody] AddUserDto request)
         {
-            var result = _zoomApi.CreateZoomUser(zoomCreateUserRequest);
-            return Ok(result);
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                if (request == null)
+                {
+                    return BadRequest(new { success = false, message = "Geçersiz istek gövdesi." });
+                }
+
+                var mappedRequest = new ZoomUserCreatedResponse
+                {
+                    email = request.email ?? string.Empty,
+                    first_name = request.first_name ?? request.firstName ?? string.Empty,
+                    last_name = request.last_name ?? request.lastName ?? string.Empty,
+                    type = request.type ?? 1,
+                    password = string.IsNullOrWhiteSpace(request.password) ? string.Empty : request.password.Trim()
+                };
+
+                var result = _zoomApi.CreateZoomUser(mappedRequest);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = $"Kullanıcı eklenemedi: {ex.Message}" });
+            }
         }
     }
 }

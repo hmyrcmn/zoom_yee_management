@@ -175,6 +175,12 @@ namespace Toplanti.Business.Concrete
                 return new ErrorDataResult<AccessToken>("Kullanıcı adı veya şifre hatalı");
             }
 
+            ldapUser.Email = (ldapUser.Email ?? userForLoginDto.Email ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(ldapUser.Email))
+            {
+                return new ErrorDataResult<AccessToken>("Kullanıcı email bilgisi bulunamadı.");
+            }
+
             var isWebmaster = string.Equals(userForLoginDto.Email, "webmaster@yee.org.tr", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(ldapUser.Email, "webmaster@yee.org.tr", StringComparison.OrdinalIgnoreCase);
             if (isWebmaster)
@@ -182,7 +188,17 @@ namespace Toplanti.Business.Concrete
                 ldapUser.Department = "Bilişim";
             }
 
-            var isActiveInZoom = _zoomService.IsUserActiveInZoom(ldapUser.Email).GetAwaiter().GetResult();
+            bool isActiveInZoom;
+            try
+            {
+                isActiveInZoom = _zoomService.IsUserActiveInZoom(ldapUser.Email).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AuthManager:Login] Zoom active-check failed for {ldapUser.Email}: {ex.Message}");
+                return new ErrorDataResult<AccessToken>("Zoom doğrulaması yapılamadı. Lütfen Bilişim birimi ile iletişime geçin.");
+            }
+
             if (!isActiveInZoom)
             {
                 return new ErrorDataResult<AccessToken>("Zoom kaydınız aktifleşmemiş. Lütfen Bilişim birimi ile iletişime geçin.");
@@ -230,8 +246,8 @@ namespace Toplanti.Business.Concrete
                 return new ErrorDataResult<AccessToken>(verifyFailureMessage);
             }
 
-            // 3. Sync Claims from LDAP Groups
-            SyncUserClaims(userToCheck!.Id, ldapUser.Groups, ldapUser.Department);
+            // 3. Sync Claims (User for everyone, Admin for Bilişim)
+            SyncUserClaims(userToCheck!.Id, ldapUser.Department);
 
             // 4. Generate Token
             var userClaims = GetClaims(userToCheck.Id);
@@ -286,27 +302,11 @@ namespace Toplanti.Business.Concrete
             return isVerified;
         }
 
-        private void SyncUserClaims(int userId, List<string> ldapGroups, string department)
+        private void SyncUserClaims(int userId, string department)
         {
-            // Define Mapping Rules
-            var mapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                { "MeetingAdmins", "Admin" },
-                { "StandardUsers", "User" },
-                { "ToplantiYonetici", "Admin" },
-                { "ToplantiKullanici", "User" }
-            };
-
-            var targetClaimNames = ldapGroups
-                .Select(g => mapping.TryGetValue(g, out var cn) ? cn : null)
-                .Where(cn => cn != null)
-                .ToList();
-
-            // Fallback default
-            if (!targetClaimNames.Any())
-            {
-                targetClaimNames.Add("User");
-            }
+            // Role setup is intentionally simple:
+            // everyone gets "User", and only Bilişim department gets "Admin".
+            var targetClaimNames = new List<string> { "User" };
 
             if (IsBilisimDepartment(department))
             {
@@ -328,7 +328,14 @@ namespace Toplanti.Business.Concrete
                 var claim = allSystemClaims.FirstOrDefault(c => c.Name.Equals(claimName, StringComparison.OrdinalIgnoreCase));
                 if (claim == null)
                 {
-                    claim = new OperationClaim { Name = claimName };
+                    claim = new OperationClaim
+                    {
+                        Name = claimName,
+                        Active = true,
+                        Deleted = false,
+                        AddedTime = DateTime.Now,
+                        ChangedTime = DateTime.Now
+                    };
                     _operationClaimDal.Add(claim);
                     allSystemClaims = _operationClaimDal.GetAll(c => c.Active && !c.Deleted);
                     claim = allSystemClaims.FirstOrDefault(c => c.Name.Equals(claimName, StringComparison.OrdinalIgnoreCase));

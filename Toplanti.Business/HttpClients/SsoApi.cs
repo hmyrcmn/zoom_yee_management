@@ -71,18 +71,21 @@ namespace Toplanti.Business.HttpClients
 
         public bool RegisterSsoMeeting(StudentRegisterDto studentRegisterDto)
         {
-            var client = _httpClientFactory.CreateClient(APIName);
-
-            HttpContent content = JsonContent.Create(studentRegisterDto);
-
-            HttpResponseMessage response = client.PostAsync("api/zoom/registerssomeeting",content).Result;
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                return true;
+                if (studentRegisterDto == null || string.IsNullOrWhiteSpace(studentRegisterDto.Email))
+                {
+                    return false;
+                }
+
+                var client = _httpClientFactory.CreateClient(APIName);
+                HttpContent content = JsonContent.Create(studentRegisterDto);
+                HttpResponseMessage response = client.PostAsync("api/zoom/registerssomeeting", content).GetAwaiter().GetResult();
+                return response.IsSuccessStatusCode;
             }
-            else
+            catch (Exception ex)
             {
+                Console.WriteLine($"[SsoApi:RegisterSsoMeeting] Exception: {ex.Message}");
                 return false;
             }
         }

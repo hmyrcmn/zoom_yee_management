@@ -109,7 +109,9 @@ builder.Services.AddAuthentication(options => {
                 ValidIssuer = tokenOptions.Issuer,
                 ValidAudience = tokenOptions.Audience,
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = Toplanti.Core.Utilities.Security.Encrytion.SecurityKeyHelper.CreateSecurityKey(tokenOptions.SecurityKey)
+                IssuerSigningKey = Toplanti.Core.Utilities.Security.Encrytion.SecurityKeyHelper.CreateSecurityKey(tokenOptions.SecurityKey),
+                RoleClaimType = System.Security.Claims.ClaimTypes.Role,
+                NameClaimType = System.Security.Claims.ClaimTypes.NameIdentifier
             };
         }
     });
@@ -196,15 +198,34 @@ app.ConfigureCustomExceptionMiddleware();
 
 app.UseCookiePolicy();
 app.UseRouting();
-app.Use(async (context, next) => {
-    if (context.Request.Method == "OPTIONS") {
-        context.Response.Headers.Add("Access-Control-Allow-Origin", "http://localhost:8082");
-        context.Response.Headers.Add("Access-Control-Allow-Headers", "*");
-        context.Response.Headers.Add("Access-Control-Allow-Methods", "*");
-        context.Response.Headers.Add("Access-Control-Allow-Credentials", "true");
-        context.Response.StatusCode = 200;
+
+app.Use(async (context, next) =>
+{
+    var origin = context.Request.Headers["Origin"].ToString();
+    var isAllowedOrigin = string.Equals(origin, "http://localhost:8082", StringComparison.OrdinalIgnoreCase);
+
+    if (isAllowedOrigin)
+    {
+        var requestedHeaders = context.Request.Headers["Access-Control-Request-Headers"].ToString();
+        var requestedMethod = context.Request.Headers["Access-Control-Request-Method"].ToString();
+
+        context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+        context.Response.Headers["Vary"] = "Origin";
+        context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        context.Response.Headers["Access-Control-Allow-Headers"] = string.IsNullOrWhiteSpace(requestedHeaders)
+            ? "Content-Type, Authorization"
+            : requestedHeaders;
+        context.Response.Headers["Access-Control-Allow-Methods"] = string.IsNullOrWhiteSpace(requestedMethod)
+            ? "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+            : requestedMethod;
+    }
+
+    if (HttpMethods.IsOptions(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status200OK;
         return;
     }
+
     await next();
 });
 app.UseCors("CorsAcik");
