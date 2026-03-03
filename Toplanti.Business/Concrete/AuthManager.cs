@@ -17,6 +17,7 @@ using System.Text.RegularExpressions;
 using Toplanti.Core.Extensisons;
 using Toplanti.Core.Utilities.Security.Hashing;
 using System.Globalization;
+using Microsoft.Extensions.Configuration;
 
 namespace Toplanti.Business.Concrete
 {
@@ -30,6 +31,7 @@ namespace Toplanti.Business.Concrete
         private IUserOperationClaimDal _userOperationClaimDal;
         private IZoomService _zoomService;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IConfiguration _configuration;
 
         public AuthManager(
             ISsoApi ssoApi, 
@@ -39,7 +41,8 @@ namespace Toplanti.Business.Concrete
             IOperationClaimDal operationClaimDal,
             IUserOperationClaimDal userOperationClaimDal,
             IZoomService zoomService,
-            IHttpContextAccessor httpContextAccessor)
+            IHttpContextAccessor httpContextAccessor,
+            IConfiguration configuration)
         {
             _ssoApi = ssoApi;
             _ldapService = ldapService;
@@ -49,6 +52,7 @@ namespace Toplanti.Business.Concrete
             _userOperationClaimDal = userOperationClaimDal;
             _zoomService = zoomService;
             _httpContextAccessor = httpContextAccessor;
+            _configuration = configuration;
         }
 
         public IDataResult<UserStudentDto> UserInfo()
@@ -168,6 +172,12 @@ namespace Toplanti.Business.Concrete
 
         public IDataResult<AccessToken> Login(UserForLoginDto userForLoginDto)
         {
+            var developmentLoginResult = TryDevelopmentLogin(userForLoginDto);
+            if (developmentLoginResult != null)
+            {
+                return developmentLoginResult;
+            }
+
             // 1. LDAP Validation & Detail Retrieval
             var ldapUser = _ldapService.ValidateUser(userForLoginDto.Email, userForLoginDto.Password);
             if (ldapUser == null)
@@ -253,6 +263,87 @@ namespace Toplanti.Business.Concrete
             var userClaims = GetClaims(userToCheck.Id);
             var accessToken = _tokenHelper.CreateToken(userToCheck, userClaims, ldapUser.Department);
             
+            return new SuccessDataResult<AccessToken>(accessToken, "Giriş başarılı");
+        }
+
+        private IDataResult<AccessToken>? TryDevelopmentLogin(UserForLoginDto userForLoginDto)
+        {
+            bool isEnabled = _configuration.GetValue<bool>("DevelopmentAuth:Enabled");
+            if (!isEnabled)
+            {
+                return null;
+            }
+
+            var configuredEmail = (_configuration["DevelopmentAuth:Email"] ?? string.Empty).Trim();
+            var configuredPassword = _configuration["DevelopmentAuth:Password"] ?? string.Empty;
+            var configuredDepartment = (_configuration["DevelopmentAuth:Department"] ?? "Bilişim").Trim();
+            var configuredFirstName = (_configuration["DevelopmentAuth:FirstName"] ?? "Dev").Trim();
+            var configuredLastName = (_configuration["DevelopmentAuth:LastName"] ?? "Admin").Trim();
+
+            if (string.IsNullOrWhiteSpace(configuredEmail) || string.IsNullOrWhiteSpace(configuredPassword))
+            {
+                return null;
+            }
+
+            var incomingEmail = (userForLoginDto.Email ?? string.Empty).Trim();
+            if (!string.Equals(incomingEmail, configuredEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (!string.Equals(userForLoginDto.Password ?? string.Empty, configuredPassword, StringComparison.Ordinal))
+            {
+                return new ErrorDataResult<AccessToken>("Kullanıcı adı veya şifre hatalı");
+            }
+
+            var user = _userDal.Get(u => u.Email == configuredEmail);
+            if (user == null)
+            {
+                user = new Toplanti.Core.Entities.Concrete.User
+                {
+                    Username = configuredEmail.Split('@')[0],
+                    FirstName = configuredFirstName,
+                    LastName = configuredLastName,
+                    Email = configuredEmail,
+                    Status = true,
+                    AddedTime = DateTime.Now,
+                    Active = true,
+                    Deleted = false,
+                    PasswordHash = new byte[0],
+                    PasswordSalt = new byte[0]
+                };
+                _userDal.Add(user);
+                user = _userDal.Get(u => u.Email == configuredEmail);
+            }
+            else
+            {
+                user.FirstName = configuredFirstName;
+                user.LastName = configuredLastName;
+                user.Status = true;
+                user.Active = true;
+                user.Deleted = false;
+                _userDal.Update(user);
+            }
+
+            if (user == null)
+            {
+                return new ErrorDataResult<AccessToken>("Development kullanıcı oluşturulamadı.");
+            }
+
+            bool hasStoredPassword =
+                user.PasswordHash != null && user.PasswordHash.Length > 0 &&
+                user.PasswordSalt != null && user.PasswordSalt.Length > 0;
+
+            string verifyFailureMessage;
+            var isVerified = EnsurePasswordHashAndVerify(user, configuredPassword, hasStoredPassword, out verifyFailureMessage);
+            if (!isVerified)
+            {
+                return new ErrorDataResult<AccessToken>(verifyFailureMessage);
+            }
+
+            SyncUserClaims(user.Id, configuredDepartment);
+            var userClaims = GetClaims(user.Id);
+            var accessToken = _tokenHelper.CreateToken(user, userClaims, configuredDepartment);
             return new SuccessDataResult<AccessToken>(accessToken, "Giriş başarılı");
         }
 
