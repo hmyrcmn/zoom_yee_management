@@ -1,11 +1,16 @@
 ﻿using Toplanti.Core.Entities.Concrete;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Toplanti.Business.HttpClients;
+using Toplanti.Core.Extensisons;
 using Toplanti.Core.Utilities.Helper;
 using Toplanti.Entities.DTOs;
 using Toplanti.Entities.Zoom;
+using System.Globalization;
+using System.Linq;
 using System.Security.Claims;
+using System.Text;
 
 namespace Toplanti.WebAPI.Controllers
 {
@@ -140,16 +145,28 @@ namespace Toplanti.WebAPI.Controllers
 
         #endregion
 
+        [Authorize]
         [HttpGet("getzoomusers")]
         public ActionResult GetZoomUserList([FromQuery] BaseCo baseCo)
         {
+            if (!IsBilisimAdmin())
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Yetkiniz yok" });
+            }
+
             var result = _zoomApi.GetZoomUserList(baseCo);
             return Ok(result);
         }
 
+        [Authorize]
         [HttpPost("createzoomuser")]
         public ActionResult CreateZoomUser([FromBody] AddUserDto request)
         {
+            if (!IsBilisimAdmin())
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Yetkiniz yok" });
+            }
+
             try
             {
                 if (!ModelState.IsValid)
@@ -178,6 +195,37 @@ namespace Toplanti.WebAPI.Controllers
             {
                 return BadRequest(new { success = false, message = $"Kullanıcı eklenemedi: {ex.Message}" });
             }
+        }
+
+        private bool IsBilisimAdmin()
+        {
+            if (User?.Identity?.IsAuthenticated != true)
+            {
+                return false;
+            }
+
+            var department = User.Department();
+            return IsBilisimDepartment(department);
+        }
+
+        private static bool IsBilisimDepartment(string department)
+        {
+            if (string.IsNullOrWhiteSpace(department))
+            {
+                return false;
+            }
+
+            var normalized = department
+                .Trim()
+                .ToLowerInvariant()
+                .Normalize(NormalizationForm.FormD);
+
+            var chars = normalized
+                .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                .Select(c => c == 'ı' ? 'i' : c)
+                .ToArray();
+
+            return new string(chars) == "bilisim";
         }
     }
 }

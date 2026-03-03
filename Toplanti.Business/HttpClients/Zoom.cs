@@ -12,6 +12,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Threading.Tasks;
 using Toplanti.Business.Constants;
+using Toplanti.Business.BusinessAspects.Autofac;
 using Toplanti.Core.Utilities.Helper;
 using Toplanti.Entities.DTOs;
 using Toplanti.Entities.Zoom;
@@ -571,6 +572,7 @@ namespace Toplanti.Business.HttpClients
             return new SuccessDataResult<List<Participants>>(zoomUsers.participants.GroupBy(x => x.name).Select(y => y.First()).ToList(), Messages.PastMeetingDetailsListed);
         }
 
+        [SecuredOperation("Admin")]
         public IDataResult<ZoomUserListWithCo> GetZoomUserList(BaseCo baseCo)
         {
             ZoomUserListWithCo zoomUserListWithCo = new ZoomUserListWithCo();
@@ -593,6 +595,7 @@ namespace Toplanti.Business.HttpClients
             }
         }
 
+        [SecuredOperation("Admin")]
         public IResult CreateZoomUser(ZoomUserCreatedResponse request)
         {
             try
