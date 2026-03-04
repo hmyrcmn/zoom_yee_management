@@ -19,6 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
     <PackageReference Include="MimeKit" Version="4.15.0" />
     <PackageReference Include="Novell.Directory.Ldap.NETStandard" Version="3.6.0" />
+    <PackageReference Include="System.DirectoryServices.Protocols" Version="8.0.1" />
     <PackageReference Include="RestSharp" Version="113.1.0" />
   </ItemGroup>
 

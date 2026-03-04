@@ -11,6 +11,7 @@ namespace Toplanti.Business.Abstract
         Task<IDataResult<List<ZoomUsers>>> GetWorkspaceUsers();
         Task<bool> IsUserActiveInZoom(string email);
         Task<IResult> AddUserToZoom(ZoomUserCreatedResponse request);
+        Task<IResult> ProvisionUserForActivation(ZoomUserCreatedResponse request);
         Task<IResult> DeleteUserFromZoom(string email);
         Task<IResult> DeleteUsersFromZoom(List<string> emails);
     }

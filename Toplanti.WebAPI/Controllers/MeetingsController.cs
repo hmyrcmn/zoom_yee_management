@@ -1,14 +1,13 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using System;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
-using Toplanti.Business.HttpClients;
-using Toplanti.Core.Utilities.Results;
-using Toplanti.DataAccess.Concrete.EntityFramework.Contexts;
-using Toplanti.Entities.Zoom;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Toplanti.Business.Abstract;
+using Toplanti.Business.Constants;
+using Toplanti.Entities.DTOs.ZoomMeetings;
 
 namespace Toplanti.WebAPI.Controllers
 {
@@ -17,109 +16,158 @@ namespace Toplanti.WebAPI.Controllers
     [Authorize]
     public class MeetingsController : ControllerBase
     {
-        private readonly ToplantiContext _context;
-        private readonly IZoom _zoomApi;
+        private readonly IZoomMeetingService _zoomMeetingService;
 
-        public MeetingsController(ToplantiContext context, IZoom zoomApi)
+        public MeetingsController(IZoomMeetingService zoomMeetingService)
         {
-            _context = context;
-            _zoomApi = zoomApi;
+            _zoomMeetingService = zoomMeetingService;
         }
 
         [HttpPost]
-        public async Task<ActionResult> CreateMeeting([FromBody] ZoomCreateRequest meetingRequest)
+        public async Task<ActionResult> CreateMeeting(
+            [FromBody] CreateZoomMeetingRequest request,
+            CancellationToken cancellationToken)
         {
-            try
+            if (!TryGetActorUserId(out var actorUserId))
             {
-                if (meetingRequest == null)
+                return Unauthorized(new
                 {
-                    return BadRequest("Meeting request is required.");
-                }
-
-                var userIdClaim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (!int.TryParse(userIdClaim, out var userId) || userId <= 0)
-                {
-                    return Unauthorized("Gecerli kullanici bulunamadi.");
-                }
-
-                EnsureMeetingLogTable();
-
-                var zoomResult = await _zoomApi.CreateZoomMeetingNew(new ZoomAuthRequest(), meetingRequest);
-                if (zoomResult == null || !zoomResult.Success || zoomResult.Data == null)
-                {
-                    return BadRequest(new ErrorDataResult<object>(null, zoomResult?.Message ?? "Zoom toplantisi olusturulamadi."));
-                }
-
-                var responseModel = zoomResult.Data;
-                LogMeeting(userId, meetingRequest, responseModel);
-
-                return Ok(new SuccessDataResult<ZoomCreatedResponse>(responseModel, "Toplanti kaydedildi."));
+                    Success = false,
+                    ErrorCode = ZoomMeetingResultCodes.InvalidRequest,
+                    Message = "Authenticated actor is required."
+                });
             }
-            catch (Exception ex)
-            {
-                return BadRequest(new ErrorDataResult<object>(null, $"Toplanti olusturma hatasi: {ex.Message}"));
-            }
+
+            var result = await _zoomMeetingService.CreateMeetingAsync(actorUserId, request, cancellationToken);
+            return ToMeetingActionResult(result);
         }
 
-        private void EnsureMeetingLogTable()
+        [HttpGet("history")]
+        public async Task<ActionResult> GetHistory(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 20,
+            CancellationToken cancellationToken = default)
         {
-            const string sql = @"
-IF OBJECT_ID('dbo.MeetingLogs', 'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.MeetingLogs (
-        Id INT IDENTITY(1,1) PRIMARY KEY,
-        UserId INT NOT NULL,
-        ZoomMeetingId BIGINT NULL,
-        Topic NVARCHAR(500) NULL,
-        Agenda NVARCHAR(MAX) NULL,
-        StartTime DATETIME2 NULL,
-        Duration INT NULL,
-        Timezone NVARCHAR(100) NULL,
-        JoinUrl NVARCHAR(1000) NULL,
-        StartUrl NVARCHAR(1000) NULL,
-        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-    );
-END";
-            _context.Database.ExecuteSqlRaw(sql);
+            if (!TryGetActorUserId(out var actorUserId))
+            {
+                return Unauthorized(new
+                {
+                    Success = false,
+                    ErrorCode = ZoomMeetingResultCodes.InvalidRequest,
+                    Message = "Authenticated actor is required."
+                });
+            }
 
-            const string ensureJoinUrlColumnSql = @"
-IF COL_LENGTH('dbo.MeetingLogs', 'JoinUrl') IS NULL
-BEGIN
-    ALTER TABLE dbo.MeetingLogs ADD JoinUrl NVARCHAR(1000) NULL;
-END";
-            _context.Database.ExecuteSqlRaw(ensureJoinUrlColumnSql);
+            var result = await _zoomMeetingService.GetHistoryAsync(
+                actorUserId,
+                pageNumber,
+                pageSize,
+                cancellationToken);
 
-            const string ensureStartUrlColumnSql = @"
-IF COL_LENGTH('dbo.MeetingLogs', 'StartUrl') IS NULL
-BEGIN
-    ALTER TABLE dbo.MeetingLogs ADD StartUrl NVARCHAR(1000) NULL;
-END";
-            _context.Database.ExecuteSqlRaw(ensureStartUrlColumnSql);
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(new
+            {
+                Success = false,
+                ErrorCode = result.Code,
+                Message = result.Message
+            });
         }
 
-        private void LogMeeting(int userId, ZoomCreateRequest request, ZoomCreatedResponse response)
+        [HttpGet("{meetingId:guid}")]
+        public async Task<ActionResult> GetMeetingById(
+            Guid meetingId,
+            CancellationToken cancellationToken)
         {
-            const string sql = @"
-INSERT INTO dbo.MeetingLogs
-    (UserId, ZoomMeetingId, Topic, Agenda, StartTime, Duration, Timezone, JoinUrl, StartUrl, CreatedAt)
-VALUES
-    (@UserId, @ZoomMeetingId, @Topic, @Agenda, @StartTime, @Duration, @Timezone, @JoinUrl, @StartUrl, @CreatedAt)";
-
-            var parameters = new[]
+            if (!TryGetActorUserId(out var actorUserId))
             {
-                new SqlParameter("@UserId", userId),
-                new SqlParameter("@ZoomMeetingId", response.id > 0 ? response.id : DBNull.Value),
-                new SqlParameter("@Topic", (object?)request.topic ?? DBNull.Value),
-                new SqlParameter("@Agenda", (object?)request.agenda ?? DBNull.Value),
-                new SqlParameter("@StartTime", request.start_time == default ? DBNull.Value : request.start_time),
-                new SqlParameter("@Duration", request.duration),
-                new SqlParameter("@Timezone", (object?)request.timezone ?? DBNull.Value),
-                new SqlParameter("@JoinUrl", (object?)response.join_url ?? DBNull.Value),
-                new SqlParameter("@StartUrl", (object?)response.start_url ?? DBNull.Value),
-                new SqlParameter("@CreatedAt", DateTime.UtcNow),
-            };
+                return Unauthorized(new
+                {
+                    Success = false,
+                    ErrorCode = ZoomMeetingResultCodes.InvalidRequest,
+                    Message = "Authenticated actor is required."
+                });
+            }
 
-            _context.Database.ExecuteSqlRaw(sql, parameters);
+            var result = await _zoomMeetingService.GetMeetingByIdAsync(
+                actorUserId,
+                meetingId,
+                cancellationToken);
+
+            return ToMeetingActionResult(result);
+        }
+
+        [HttpDelete("{meetingId:guid}")]
+        public async Task<ActionResult> DeleteMeeting(
+            Guid meetingId,
+            CancellationToken cancellationToken)
+        {
+            if (!TryGetActorUserId(out var actorUserId))
+            {
+                return Unauthorized(new
+                {
+                    Success = false,
+                    ErrorCode = ZoomMeetingResultCodes.InvalidRequest,
+                    Message = "Authenticated actor is required."
+                });
+            }
+
+            var result = await _zoomMeetingService.DeleteMeetingAsync(
+                actorUserId,
+                meetingId,
+                cancellationToken);
+
+            return ToMeetingActionResult(result);
+        }
+
+        private ActionResult ToMeetingActionResult(ZoomMeetingOperationResult result)
+        {
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            if (string.Equals(
+                    result.Code,
+                    ZoomMeetingResultCodes.MeetingNotFoundOrForbidden,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    Success = false,
+                    ErrorCode = result.Code,
+                    Message = result.Message
+                });
+            }
+
+            if (string.Equals(
+                    result.Code,
+                    ZoomMeetingResultCodes.InvalidRequest,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    ErrorCode = result.Code,
+                    Message = result.Message
+                });
+            }
+
+            return BadRequest(new
+            {
+                Success = false,
+                ErrorCode = result.Code,
+                Message = result.Message
+            });
+        }
+
+        private bool TryGetActorUserId(out Guid actorUserId)
+        {
+            var raw = User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            return Guid.TryParse(raw, out actorUserId) && actorUserId != Guid.Empty;
         }
     }
 }

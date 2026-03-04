@@ -141,6 +141,16 @@ namespace Toplanti.Business.Concrete
         [SecuredOperation("Admin")]
         public async Task<IResult> AddUserToZoom(ZoomUserCreatedResponse request)
         {
+            return await AddUserToZoomInternal(request);
+        }
+
+        public async Task<IResult> ProvisionUserForActivation(ZoomUserCreatedResponse request)
+        {
+            return await AddUserToZoomInternal(request);
+        }
+
+        private async Task<IResult> AddUserToZoomInternal(ZoomUserCreatedResponse request)
+        {
             try
             {
                 if (request == null || string.IsNullOrWhiteSpace(request.email))

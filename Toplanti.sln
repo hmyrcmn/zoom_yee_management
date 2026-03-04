@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toplanti.Entities", "Toplan
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toplanti.WebAPI", "Toplanti.WebAPI\Toplanti.WebAPI.csproj", "{597BF8F5-80A5-49C5-ACC5-9E6DEA5D6995}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toplanti.IntegrationTests", "Toplanti.IntegrationTests\Toplanti.IntegrationTests.csproj", "{F99850B5-7458-4537-BFDF-F9AA1F668DC5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{597BF8F5-80A5-49C5-ACC5-9E6DEA5D6995}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{597BF8F5-80A5-49C5-ACC5-9E6DEA5D6995}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{597BF8F5-80A5-49C5-ACC5-9E6DEA5D6995}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F99850B5-7458-4537-BFDF-F9AA1F668DC5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F99850B5-7458-4537-BFDF-F9AA1F668DC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F99850B5-7458-4537-BFDF-F9AA1F668DC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F99850B5-7458-4537-BFDF-F9AA1F668DC5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

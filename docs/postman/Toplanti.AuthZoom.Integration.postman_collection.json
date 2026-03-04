@@ -1,0 +1,362 @@
+﻿{
+  "info": {
+    "_postman_id": "f1a0d4a1-39bb-4e8a-8a5e-6f4d0db6c729",
+    "name": "Toplanti Auth + Zoom Integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Integration checks for LDAP login, OTP verification, Zoom provisioning, and webhook signature validation."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "LDAP Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrEmail\": \"{{ldapUsernameOrEmail}}\",\n  \"password\": \"{{ldapPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "LDAP authentication endpoint. On success the test script stores JWT into accessToken."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login returns valid status', function () {",
+                  "  pm.expect([200, 400, 401]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "",
+                  "if (pm.response.code === 200 && json.Data && json.Data.Token) {",
+                  "  pm.environment.set('accessToken', json.Data.Token);",
+                  "  pm.environment.set('actorUserId', json.Data.UserId || '');",
+                  "  pm.environment.set('actorEmail', json.Data.Email || '');",
+                  "  pm.environment.set('actorDepartment', json.Data.Department || '');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{otpEmail}}\",\n  \"otpCode\": \"{{otpCode}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "description": "OTP verification endpoint. Requires a valid unexpired OTP challenge in DB."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Verify OTP returns valid status', function () {",
+                  "  pm.expect([200, 400, 401]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "",
+                  "if (pm.response.code === 200 && json.Data && json.Data.Token) {",
+                  "  pm.environment.set('accessToken', json.Data.Token);",
+                  "  pm.environment.set('actorUserId', json.Data.UserId || '');",
+                  "  pm.environment.set('actorEmail', json.Data.Email || '');",
+                  "  pm.environment.set('actorDepartment', json.Data.Department || '');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Zoom Provisioning",
+      "item": [
+        {
+          "name": "Get Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/zoomprovisioning/status?email={{zoomEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "zoomprovisioning",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "email",
+                  "value": "{{zoomEmail}}"
+                }
+              ]
+            },
+            "description": "Checks local + Zoom workspace account status. Requires Authorization bearer token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status endpoint should respond', function () {",
+                  "  pm.expect([200, 400, 401]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('zoomStatusCode', json.Code || '');",
+                  "  pm.environment.set('zoomStatusName', json.StatusName || '');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request Account (Provision)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{zoomEmail}}\",\n  \"firstName\": \"{{zoomFirstName}}\",\n  \"lastName\": \"{{zoomLastName}}\",\n  \"userType\": {{zoomUserType}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/zoomprovisioning/request-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "zoomprovisioning",
+                "request-account"
+              ]
+            },
+            "description": "Triggers Zoom provisioning flow and state transition logging."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Provision endpoint should respond', function () {",
+                  "  pm.expect([200, 400, 401]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "if (json && json.Code) {",
+                  "  pm.environment.set('lastProvisionCode', json.Code);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Security",
+      "item": [
+        {
+          "name": "Webhook Invalid Signature (Expect 401)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.environment.get('webhookPayload') || '{\"event\":\"user.activated\",\"event_id\":\"evt-invalid-1\",\"payload\":{\"object\":{\"email\":\"user@yee.org.tr\",\"id\":\"zoom-user-1\"}}}';",
+                  "pm.environment.set('webhookPayload', payload);",
+                  "pm.environment.set('webhookTimestamp', Math.floor(Date.now() / 1000).toString());",
+                  "pm.environment.set('invalidWebhookSignature', 'v0=invalidsignature');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Invalid webhook signature must be rejected', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Error code should match signature failure', function () {",
+                  "  pm.expect(json.ErrorCode).to.eql('ZOOM_CALLBACK_INVALID_SIGNATURE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-zm-request-timestamp",
+                "value": "{{webhookTimestamp}}"
+              },
+              {
+                "key": "x-zm-signature",
+                "value": "{{invalidWebhookSignature}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{webhookPayload}}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/zoom",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "zoom"
+              ]
+            },
+            "description": "Negative security test for webhook signature validation."
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook Simulator (user.activated)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.environment.get('webhookPayload') || '{\"event\":\"user.activated\",\"event_id\":\"evt-valid-1\",\"payload\":{\"object\":{\"email\":\"user@yee.org.tr\",\"id\":\"zoom-user-1\"}}}';",
+                  "const ts = Math.floor(Date.now() / 1000).toString();",
+                  "const secret = pm.environment.get('webhookSecret') || '';",
+                  "pm.environment.set('webhookPayload', payload);",
+                  "pm.environment.set('webhookTimestamp', ts);",
+                  "",
+                  "const canonical = `v0:${ts}:${payload}`;",
+                  "const digest = CryptoJS.HmacSHA256(canonical, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.environment.set('webhookSignature', `v0=${digest}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Valid webhook should not return 401', function () {",
+                  "  pm.expect(pm.response.code).to.not.eql(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-zm-request-timestamp",
+                "value": "{{webhookTimestamp}}"
+              },
+              {
+                "key": "x-zm-signature",
+                "value": "{{webhookSignature}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{webhookPayload}}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/zoom",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "zoom"
+              ]
+            },
+            "description": "Positive control for webhook signature logic."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

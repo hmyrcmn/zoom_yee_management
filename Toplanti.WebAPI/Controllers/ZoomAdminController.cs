@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,6 +13,7 @@ namespace Toplanti.WebAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "Admin,IT")]
     public class ZoomAdminController : ControllerBase
     {
         private readonly IZoomService _zoomService;
@@ -48,7 +50,7 @@ namespace Toplanti.WebAPI.Controllers
             catch (System.Exception ex)
             {
                 System.Console.WriteLine($"[ZoomAdminController:GetUsers] Exception: {ex.Message}");
-                return BadRequest(new { success = false, message = $"Zoom users alÄ±nÄ±rken hata: {ex.Message}" });
+                return BadRequest(new { success = false, message = $"Zoom users alinirken hata: {ex.Message}" });
             }
         }
 
@@ -64,7 +66,7 @@ namespace Toplanti.WebAPI.Controllers
 
                 if (request == null)
                 {
-                    return BadRequest(new { success = false, message = "Geçersiz istek gövdesi." });
+                    return BadRequest(new { success = false, message = "Gecersiz istek govdesi." });
                 }
 
                 var mappedRequest = new ZoomUserCreatedResponse
@@ -117,7 +119,7 @@ namespace Toplanti.WebAPI.Controllers
                 var requesterEmail = GetRequesterEmail();
                 if (IsSameEmail(requesterEmail, email))
                 {
-                    return StatusCode(403, new { success = false, message = "Kendi hesabınızı silemezsiniz!" });
+                    return StatusCode(403, new { success = false, message = "Kendi hesabinizi silemezsiniz!" });
                 }
 
                 var result = await _zoomService.DeleteUserFromZoom(email);
@@ -165,7 +167,7 @@ namespace Toplanti.WebAPI.Controllers
 
                 if (targetEmails.Any(email => IsSameEmail(requesterEmail, email)))
                 {
-                    return StatusCode(403, new { success = false, message = "Kendi hesabınızı silemezsiniz!" });
+                    return StatusCode(403, new { success = false, message = "Kendi hesabinizi silemezsiniz!" });
                 }
 
                 var result = await _zoomService.DeleteUsersFromZoom(targetEmails);
@@ -195,7 +197,7 @@ namespace Toplanti.WebAPI.Controllers
             catch (System.Exception ex)
             {
                 System.Console.WriteLine($"[ZoomAdminController:BulkDeleteUsersFromZoom] Exception: {ex.Message}");
-                return BadRequest(new { success = false, message = $"Zoom bulk delete sÄ±rasÄ±nda hata: {ex.Message}" });
+                return BadRequest(new { success = false, message = $"Zoom bulk delete sirasinda hata: {ex.Message}" });
             }
         }
 

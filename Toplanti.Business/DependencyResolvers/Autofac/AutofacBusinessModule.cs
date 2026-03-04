@@ -5,7 +5,6 @@ using Toplanti.Core.Utilities.Interceptors;
 using Toplanti.Core.Utilities.Security.JWT;
 using Toplanti.Business.Abstract;
 using Toplanti.Business.Concrete;
-using Toplanti.Business.HttpClients;
 using Toplanti.DataAccess.Abstract;
 using Toplanti.DataAccess.Concrete.EntityFramework;
 
@@ -20,13 +19,15 @@ namespace Toplanti.Business.DependencyResolvers.Autofac
             builder.RegisterType<EfOperationClaimDal>().As<IOperationClaimDal>();
             builder.RegisterType<EfUserOperationClaimDal>().As<IUserOperationClaimDal>();
 
-            builder.RegisterType<AuthManager>().As<IAuthService>();
+            builder.RegisterType<AuthenticationService>().As<IAuthenticationService>();
             builder.RegisterType<AuthTestManager>().As<IAuthTestService>();
+            builder.RegisterType<ZoomProvisioningService>().As<IZoomProvisioningService>();
+            builder.RegisterType<ZoomMeetingService>().As<IZoomMeetingService>();
             builder.RegisterType<JwtHelper>().As<ITokenHelper>();
 
-            builder.RegisterType<SsoApi>().As<ISsoApi>();
             builder.RegisterType<LdapManager>().As<ILdapService>();
             builder.RegisterType<ZoomService>().As<IZoomService>();
+            builder.RegisterType<AuthNotificationService>().As<IAuthNotificationService>();
 
             var assembly = System.Reflection.Assembly.GetExecutingAssembly();
 
