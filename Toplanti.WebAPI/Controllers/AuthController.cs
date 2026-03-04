@@ -110,7 +110,7 @@ namespace Toplanti.WebAPI.Controllers
             {
                 Success = true,
                 ErrorCode = string.Empty,
-                Message = "OTP generated successfully.",
+                Message = generationResult.Message,
                 Data = new
                 {
                     generationResult.ChallengeId,

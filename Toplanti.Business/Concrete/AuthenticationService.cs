@@ -32,6 +32,8 @@ namespace Toplanti.Business.Concrete
         private readonly int _otpTtlSeconds;
         private readonly int _otpCooldownSeconds;
         private readonly short _otpMaxAttempts;
+        private readonly bool _otpAllowConsoleFallback;
+        private readonly bool _otpSmtpConfigured;
 
         public AuthenticationService(
             ToplantiContext context,
@@ -47,6 +49,12 @@ namespace Toplanti.Business.Concrete
             _otpTtlSeconds = Math.Max(60, configuration.GetValue<int?>("Otp:CodeTtlSeconds") ?? 300);
             _otpCooldownSeconds = Math.Max(15, configuration.GetValue<int?>("Otp:CooldownSeconds") ?? 60);
             _otpMaxAttempts = (short)Math.Clamp(configuration.GetValue<int?>("Otp:MaxAttempts") ?? 5, 1, 10);
+            _otpAllowConsoleFallback = configuration.GetValue<bool>("Otp:AllowConsoleFallback");
+            _otpSmtpConfigured =
+                !string.IsNullOrWhiteSpace(configuration["Otp:Smtp:Host"])
+                && !string.IsNullOrWhiteSpace(configuration["Otp:Smtp:Username"])
+                && !string.IsNullOrWhiteSpace(configuration["Otp:Smtp:Password"])
+                && !string.IsNullOrWhiteSpace(configuration["Otp:Smtp:FromEmail"]);
         }
 
         public async Task<AuthenticationResult> AuthenticateLdapAsync(
@@ -256,7 +264,9 @@ namespace Toplanti.Business.Concrete
             {
                 Success = true,
                 Code = AuthenticationResultCodes.OtpGenerated,
-                Message = "OTP kodu başarıyla oluşturuldu.",
+                Message = _otpAllowConsoleFallback && !_otpSmtpConfigured
+                    ? "OTP kodu olusturuldu. SMTP ayari olmadigi icin kod API konsoluna yazdirildi."
+                    : "OTP kodu başarıyla oluşturuldu.",
                 ChallengeId = challenge.OtpChallengeId,
                 ExpiresAtUtc = challenge.ExpiresAt,
                 CooldownSecondsRemaining = _otpCooldownSeconds
