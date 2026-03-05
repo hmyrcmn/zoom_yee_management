@@ -674,7 +674,7 @@ namespace Toplanti.Business.Concrete
                 actorUserId,
                 SourceSystem,
                 createResponse.HttpStatusCode,
-                "Zoom autoCreate accepted. Waiting for activation.",
+                "Zoom user creation accepted. Waiting for activation.",
                 createResponse.RawResponse,
                 ipAddress);
 
@@ -693,7 +693,7 @@ namespace Toplanti.Business.Concrete
             {
                 Success = true,
                 Code = ZoomProvisioningResultCodes.ProvisioningStarted,
-                Message = "Provisioning accepted. Waiting for activation event.",
+                Message = "Provisioning started. Check your email for Zoom activation.",
                 UserProvisioningId = provisioning.UserProvisioningId,
                 Email = provisioning.Email,
                 StatusName = ResolveStatusName(provisioning.ZoomStatusId),
@@ -1313,7 +1313,7 @@ namespace Toplanti.Business.Concrete
             using var client = await CreateZoomHttpClientAsync(cancellationToken);
             var payload = new
             {
-                action = "autoCreate",
+                action = "create",
                 user_info = new
                 {
                     email,
@@ -1325,8 +1325,21 @@ namespace Toplanti.Business.Concrete
 
             using var response = await client.PostAsJsonAsync("users", payload, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var errorMessage = ExtractZoomErrorMessage(body, "Zoom user creation failed.");
 
             if (response.IsSuccessStatusCode)
+            {
+                return new ZoomCreateUserResponse
+                {
+                    Success = true,
+                    HttpStatusCode = (int)response.StatusCode,
+                    ZoomUserId = TryExtractJsonString(body, "id"),
+                    RawResponse = body
+                };
+            }
+
+            if (response.StatusCode == HttpStatusCode.BadRequest
+                && LooksLikeAlreadyInvitedResponse(errorMessage))
             {
                 return new ZoomCreateUserResponse
                 {
@@ -1345,7 +1358,7 @@ namespace Toplanti.Business.Concrete
                     HttpStatusCode = (int)response.StatusCode,
                     ZoomUserId = TryExtractJsonString(body, "id"),
                     ErrorCode = "409",
-                    ErrorMessage = ExtractZoomErrorMessage(body, "Zoom user already exists."),
+                    ErrorMessage = errorMessage,
                     RawResponse = body
                 };
             }
@@ -1358,7 +1371,7 @@ namespace Toplanti.Business.Concrete
                     HttpStatusCode = (int)response.StatusCode,
                     RetryAfterSeconds = ParseRetryAfterSeconds(response),
                     ErrorCode = "429",
-                    ErrorMessage = ExtractZoomErrorMessage(body, "Zoom rate limit reached."),
+                    ErrorMessage = errorMessage,
                     RawResponse = body
                 };
             }
@@ -1367,7 +1380,7 @@ namespace Toplanti.Business.Concrete
             {
                 HttpStatusCode = (int)response.StatusCode,
                 ErrorCode = ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture),
-                ErrorMessage = ExtractZoomErrorMessage(body, "Zoom user creation failed."),
+                ErrorMessage = errorMessage,
                 RawResponse = body
             };
         }
