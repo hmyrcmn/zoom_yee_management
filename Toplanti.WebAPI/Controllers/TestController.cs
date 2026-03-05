@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Toplanti.Business.Abstract;
 using Toplanti.Business.BusinessAspects.Autofac;
@@ -16,6 +17,7 @@ namespace Toplanti.WebAPI.Controllers
         }
 
         [HttpGet("admin-only")]
+        [Authorize(Roles = "Admin,IT")]
         public IActionResult AdminOnlyTest()
         {
             var result = _authTestService.AdminOnlyTest();
@@ -24,6 +26,7 @@ namespace Toplanti.WebAPI.Controllers
         }
 
         [HttpGet("user-only")]
+        [Authorize]
         [SecuredOperation("User,Admin")]
         public IActionResult UserOnlyTest()
         {

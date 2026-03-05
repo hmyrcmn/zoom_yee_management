@@ -89,6 +89,7 @@ namespace Toplanti.Business.Concrete
             var actorUserId = request.ActorUserId;
             var ipAddress = NormalizeIp(request.IpAddress);
             var forceRefresh = request.ForceRefresh;
+            var forceActivationInviteResend = request.ForceActivationInviteResend;
 
             await EnsureStatusCatalogAsync(cancellationToken);
 
@@ -114,9 +115,7 @@ namespace Toplanti.Business.Concrete
 
                     if (refreshLookup.Exists)
                     {
-                        nextStatusId = string.Equals(refreshLookup.ZoomStatus, "active", StringComparison.OrdinalIgnoreCase)
-                            ? (byte)ZoomProvisioningStatus.Active
-                            : (byte)ZoomProvisioningStatus.ActivationPending;
+                        nextStatusId = (byte)MapZoomUserStatusToProvisioningStatus(refreshLookup.ZoomStatus);
                     }
                     else if (!refreshLookup.IsRateLimited && string.IsNullOrWhiteSpace(refreshLookup.ErrorCode))
                     {
@@ -146,7 +145,9 @@ namespace Toplanti.Business.Concrete
                         actorUserId: actorUserId,
                         source: SourceSystem,
                         httpStatusCode: refreshLookup.HttpStatusCode,
-                        message: refreshLookup.ErrorMessage,
+                        message: string.IsNullOrWhiteSpace(refreshLookup.ErrorMessage)
+                            ? BuildLookupStatusMessage(refreshLookup.ZoomStatus, existingProvisioning.ZoomStatusId)
+                            : refreshLookup.ErrorMessage,
                         rawResponse: refreshLookup.RawResponse,
                         requestIpAddress: ipAddress);
 
@@ -165,6 +166,7 @@ namespace Toplanti.Business.Concrete
                             existingProvisioning,
                             actorUserId,
                             ipAddress,
+                            forceActivationInviteResend,
                             cancellationToken);
 
                         if (!string.IsNullOrWhiteSpace(resendResult.Message))
@@ -172,8 +174,40 @@ namespace Toplanti.Business.Concrete
                             statusMessage = resendResult.Message;
                         }
                     }
+                    else if (existingProvisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.Failed
+                             || existingProvisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.ManualSupportRequired)
+                    {
+                        statusMessage = BuildLookupStatusMessage(
+                            refreshLookup.ZoomStatus,
+                            existingProvisioning.ZoomStatusId);
+                    }
 
-                    await _context.SaveChangesAsync(cancellationToken);
+                    try
+                    {
+                        await _context.SaveChangesAsync(cancellationToken);
+                    }
+                    catch (DbUpdateConcurrencyException concurrencyException)
+                    {
+                        _logger.LogWarning(
+                            concurrencyException,
+                            "Concurrent provisioning update detected for {Email}. Loading latest row.",
+                            email);
+
+                        _context.ChangeTracker.Clear();
+                        existingProvisioning = await _context.ZoomUserProvisionings
+                            .AsNoTracking()
+                            .Include(x => x.ZoomStatus)
+                            .FirstOrDefaultAsync(x => x.EmailNormalized == emailKey, cancellationToken);
+
+                        if (existingProvisioning == null)
+                        {
+                            return AccountStatusFailure(
+                                ZoomProvisioningResultCodes.UnexpectedError,
+                                "Zoom provisioning record was updated concurrently. Please retry.");
+                        }
+
+                        statusMessage = "Provisioning status was updated by another request. Current status loaded.";
+                    }
 
                     _logger.LogInformation(
                         "Zoom provisioning status refreshed for {Email}. LocalStatus={Status}, Http={Http}",
@@ -236,7 +270,9 @@ namespace Toplanti.Business.Concrete
                 actorUserId: actorUserId,
                 source: SourceSystem,
                 httpStatusCode: zoomLookup.HttpStatusCode,
-                message: zoomLookup.ErrorMessage,
+                message: string.IsNullOrWhiteSpace(zoomLookup.ErrorMessage)
+                    ? BuildLookupStatusMessage(zoomLookup.ZoomStatus, (byte)mappedStatus)
+                    : zoomLookup.ErrorMessage,
                 rawResponse: zoomLookup.RawResponse,
                 requestIpAddress: ipAddress);
 
@@ -263,7 +299,7 @@ namespace Toplanti.Business.Concrete
             {
                 Success = true,
                 Code = ZoomProvisioningResultCodes.StatusFetched,
-                Message = "Provisioning status synchronized.",
+                Message = BuildLookupStatusMessage(zoomLookup.ZoomStatus, (byte)mappedStatus),
                 UserProvisioningId = provisioning.UserProvisioningId,
                 Email = provisioning.Email,
                 StatusName = ResolveStatusName(provisioning.ZoomStatusId),
@@ -342,6 +378,7 @@ namespace Toplanti.Business.Concrete
                     provisioning,
                     actorUserId,
                     ipAddress,
+                    forceResend: false,
                     cancellationToken);
 
                 await _context.SaveChangesAsync(cancellationToken);
@@ -987,6 +1024,7 @@ namespace Toplanti.Business.Concrete
             ZoomUserProvisioning provisioning,
             Guid? actorUserId,
             string ipAddress,
+            bool forceResend,
             CancellationToken cancellationToken)
         {
             if (provisioning == null
@@ -1005,7 +1043,7 @@ namespace Toplanti.Business.Concrete
                 .Select(x => (DateTime?)x.CreatedAt)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (lastResendAt.HasValue)
+            if (!forceResend && lastResendAt.HasValue)
             {
                 var nextResendAt = lastResendAt.Value.AddMinutes(_activationInviteResendIntervalMinutes);
                 if (nextResendAt > now)
@@ -1060,8 +1098,11 @@ namespace Toplanti.Business.Concrete
             if (inviteResponse.Success)
             {
                 _logger.LogInformation("Zoom activation invite reminder triggered for {Email}", provisioning.Email);
-                return ActivationInviteResendResult.AttemptedSuccess(
-                    "Activation is still pending. We re-sent a Zoom activation reminder email.");
+                var message = inviteResponse.ReminderTriggered
+                    ? "Activation is still pending. We re-sent a Zoom activation reminder email."
+                    : "Activation is still pending. Zoom reports an existing pending invitation; a new reminder email may not be sent yet.";
+
+                return ActivationInviteResendResult.AttemptedSuccess(message);
             }
 
             _logger.LogWarning(
@@ -1100,12 +1141,16 @@ namespace Toplanti.Business.Concrete
 
             if (response.IsSuccessStatusCode)
             {
-                return ZoomActivationInviteResponse.FromSuccess((int)response.StatusCode, body);
+                return ZoomActivationInviteResponse.FromSuccess((int)response.StatusCode, body, reminderTriggered: true);
             }
 
             if (response.StatusCode == HttpStatusCode.Conflict)
             {
-                return ZoomActivationInviteResponse.FromSuccess((int)response.StatusCode, body);
+                return ZoomActivationInviteResponse.FromSuccess(
+                    (int)response.StatusCode,
+                    body,
+                    reminderTriggered: false,
+                    statusMessage: "Zoom reports the invitation is already pending.");
             }
 
             var errorMessage = ExtractZoomErrorMessage(body, "Zoom activation invite request failed.");
@@ -1113,7 +1158,11 @@ namespace Toplanti.Business.Concrete
             if (response.StatusCode == HttpStatusCode.BadRequest
                 && LooksLikeAlreadyInvitedResponse(errorMessage))
             {
-                return ZoomActivationInviteResponse.FromSuccess((int)response.StatusCode, body);
+                return ZoomActivationInviteResponse.FromSuccess(
+                    (int)response.StatusCode,
+                    body,
+                    reminderTriggered: false,
+                    statusMessage: "Zoom reports the invitation is already pending.");
             }
 
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -1441,12 +1490,7 @@ namespace Toplanti.Business.Concrete
         {
             if (response.Exists)
             {
-                if (string.Equals(response.ZoomStatus, "active", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ZoomProvisioningStatus.Active;
-                }
-
-                return ZoomProvisioningStatus.ActivationPending;
+                return MapZoomUserStatusToProvisioningStatus(response.ZoomStatus);
             }
 
             if (response.IsRateLimited || !string.IsNullOrWhiteSpace(response.ErrorCode))
@@ -1455,6 +1499,51 @@ namespace Toplanti.Business.Concrete
             }
 
             return ZoomProvisioningStatus.None;
+        }
+
+        private static ZoomProvisioningStatus MapZoomUserStatusToProvisioningStatus(string zoomUserStatus)
+        {
+            var normalized = (zoomUserStatus ?? string.Empty).Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return ZoomProvisioningStatus.ActivationPending;
+            }
+
+            if (normalized == "active")
+            {
+                return ZoomProvisioningStatus.Active;
+            }
+
+            if (normalized.Contains("pending", StringComparison.Ordinal)
+                || normalized.Contains("invite", StringComparison.Ordinal)
+                || normalized.Contains("verify", StringComparison.Ordinal))
+            {
+                return ZoomProvisioningStatus.ActivationPending;
+            }
+
+            return ZoomProvisioningStatus.Failed;
+        }
+
+        private static string BuildLookupStatusMessage(string zoomUserStatus, byte localStatusId)
+        {
+            if (localStatusId == (byte)ZoomProvisioningStatus.Active)
+            {
+                return "Zoom account is active.";
+            }
+
+            if (localStatusId == (byte)ZoomProvisioningStatus.ActivationPending
+                || localStatusId == (byte)ZoomProvisioningStatus.ProvisioningPending)
+            {
+                return "Zoom account exists but activation is still pending. Please approve the Zoom invitation email. If you already have a Zoom account, accept the account-join invitation.";
+            }
+
+            var normalized = (zoomUserStatus ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return $"Zoom account status is '{normalized}'. Please contact IT support.";
+            }
+
+            return "Zoom account is not ready. Please contact IT support.";
         }
 
         private static bool IsValidEmail(string email)
@@ -1658,17 +1747,25 @@ namespace Toplanti.Business.Concrete
         private sealed class ZoomActivationInviteResponse
         {
             public bool Success { get; init; }
+            public bool ReminderTriggered { get; init; }
             public int HttpStatusCode { get; init; }
+            public string StatusMessage { get; init; } = string.Empty;
             public string ErrorCode { get; init; } = string.Empty;
             public string ErrorMessage { get; init; } = string.Empty;
             public string RawResponse { get; init; } = string.Empty;
 
-            public static ZoomActivationInviteResponse FromSuccess(int httpStatusCode, string rawResponse)
+            public static ZoomActivationInviteResponse FromSuccess(
+                int httpStatusCode,
+                string rawResponse,
+                bool reminderTriggered,
+                string statusMessage = "")
             {
                 return new ZoomActivationInviteResponse
                 {
                     Success = true,
+                    ReminderTriggered = reminderTriggered,
                     HttpStatusCode = httpStatusCode,
+                    StatusMessage = statusMessage ?? string.Empty,
                     RawResponse = rawResponse ?? string.Empty
                 };
             }

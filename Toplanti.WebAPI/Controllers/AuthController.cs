@@ -37,6 +37,8 @@ namespace Toplanti.WebAPI.Controllers
         private readonly ToplantiContext _context;
         private readonly IConfiguration _configuration;
         private readonly string _corporateDomain;
+        private readonly int _activationPendingEscalationMinutes;
+        private readonly int _activationPendingEscalationReminderCount;
 
         public AuthController(
             IAuthenticationService authenticationService,
@@ -51,17 +53,23 @@ namespace Toplanti.WebAPI.Controllers
             _corporateDomain = (_configuration["AuthFlow:CorporateDomain"] ?? "yee.org.tr")
                 .Trim()
                 .ToLowerInvariant();
+            _activationPendingEscalationMinutes = Math.Max(
+                5,
+                _configuration.GetValue<int?>("AuthFlow:ActivationPendingEscalationMinutes") ?? 30);
+            _activationPendingEscalationReminderCount = Math.Max(
+                1,
+                _configuration.GetValue<int?>("AuthFlow:ActivationPendingEscalationReminderCount") ?? 3);
         }
 
         [HttpPost("generate-otp")]
         public async Task<ActionResult> GenerateOtp(
-            [FromBody] GenerateOtpCommand request,
+            [FromBody] GenerateOtpCommand? request,
             CancellationToken cancellationToken)
         {
             var email = (request?.Email ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(email))
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = AuthenticationResultCodes.InvalidRequest,
@@ -71,7 +79,7 @@ namespace Toplanti.WebAPI.Controllers
 
             if (IsCorporateEmail(email))
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = AuthenticationResultCodes.InvalidRequest,
@@ -93,7 +101,7 @@ namespace Toplanti.WebAPI.Controllers
                     ? AuthFlowCodes.OtpDeliveryFailed
                     : AuthFlowCodes.OtpRequired;
 
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = flowCode,
@@ -127,13 +135,13 @@ namespace Toplanti.WebAPI.Controllers
         {
             var identity = ResolveIdentity(request);
             var requestEmail = (request?.Email ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(identity) || string.IsNullOrWhiteSpace(request?.Password))
+            if (string.IsNullOrWhiteSpace(identity))
             {
                 return BadRequest(new
                 {
                     Success = false,
                     ErrorCode = AuthenticationResultCodes.InvalidRequest,
-                    Message = "Username/email and password are required."
+                    Message = "Username/email is required."
                 });
             }
 
@@ -141,6 +149,16 @@ namespace Toplanti.WebAPI.Controllers
             if (!isCorporateLogin)
             {
                 return await HandleExternalLoginAsync(request, identity, cancellationToken);
+            }
+
+            if (string.IsNullOrWhiteSpace(request?.Password))
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    ErrorCode = AuthenticationResultCodes.InvalidRequest,
+                    Message = "Password is required for corporate login."
+                });
             }
 
             var corporateIdentity = IsCorporateEmail(identity)
@@ -179,12 +197,12 @@ namespace Toplanti.WebAPI.Controllers
 
         [HttpPost("verify-otp")]
         public async Task<ActionResult> VerifyOtp(
-            [FromBody] VerifyOtpRequest request,
+            [FromBody] VerifyOtpRequest? request,
             CancellationToken cancellationToken)
         {
             if (request == null)
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = AuthenticationResultCodes.InvalidRequest,
@@ -197,7 +215,7 @@ namespace Toplanti.WebAPI.Controllers
             var otpCode = new string(otpCodeRaw.Where(char.IsDigit).ToArray());
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(otpCode))
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = AuthenticationResultCodes.InvalidRequest,
@@ -207,7 +225,7 @@ namespace Toplanti.WebAPI.Controllers
 
             if (IsCorporateEmail(email))
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = AuthenticationResultCodes.InvalidRequest,
@@ -233,18 +251,75 @@ namespace Toplanti.WebAPI.Controllers
             }
 
             var department = await ResolveDepartmentAsync(otpResult.UserId.Value, otpResult.Email, cancellationToken);
+            var isCorporateUser = IsCorporateEmail(otpResult.Email);
+            if (!isCorporateUser)
+            {
+                var checkResult = await _zoomProvisioningService.CheckAccountStatusAsync(
+                    new CheckZoomAccountStatusRequest
+                    {
+                        Email = otpResult.Email,
+                        IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty,
+                        ForceRefresh = true
+                    },
+                    cancellationToken);
+
+                if (!checkResult.Success)
+                {
+                    return Ok(new
+                    {
+                        Success = false,
+                        ErrorCode = checkResult.Code,
+                        Message = string.IsNullOrWhiteSpace(checkResult.Message)
+                            ? "Zoom hesap durumu kontrol edilemedi."
+                            : checkResult.Message
+                    });
+                }
+
+                var zoomStatus = NormalizeStatusName(checkResult.StatusName);
+                var hasZoomAccount = string.Equals(
+                                         zoomStatus,
+                                         ZoomProvisioningStatus.Active.ToString(),
+                                         StringComparison.OrdinalIgnoreCase)
+                                     || string.Equals(
+                                         zoomStatus,
+                                         ZoomProvisioningStatus.ActivationPending.ToString(),
+                                         StringComparison.OrdinalIgnoreCase)
+                                     || string.Equals(
+                                         zoomStatus,
+                                         ZoomProvisioningStatus.ProvisioningPending.ToString(),
+                                         StringComparison.OrdinalIgnoreCase);
+
+                if (!hasZoomAccount)
+                {
+                    return Ok(new
+                    {
+                        Success = false,
+                        ErrorCode = "ZOOM_ACCOUNT_REQUIRED",
+                        Message = "Bu e-posta adresi icin Zoom hesabi bulunamadi. Kurumsal olmayan kullanicilar uygulamaya giris yapamaz. Lutfen once Zoom hesabi olusturun.",
+                        Data = new
+                        {
+                            ZoomStatus = zoomStatus,
+                            ZoomStatusCode = checkResult.Code,
+                            ZoomUiAction = UiActionContactIt
+                        }
+                    });
+                }
+            }
+
             return await BuildAuthenticatedResponseAsync(
                 otpResult.UserId.Value,
                 otpResult.Email,
                 department,
-                IsCorporateEmail(otpResult.Email),
+                isCorporateUser,
                 "OTP verification successful.",
-                cancellationToken);
+                cancellationToken,
+                forceDashboardForExternal: !isCorporateUser);
         }
 
         [HttpGet("zoom-activation-status")]
         public async Task<ActionResult> GetZoomActivationStatus(
             [FromQuery] string email,
+            [FromQuery] bool forceResend,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(email))
@@ -262,7 +337,8 @@ namespace Toplanti.WebAPI.Controllers
                 {
                     Email = email.Trim(),
                     IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty,
-                    ForceRefresh = true
+                    ForceRefresh = true,
+                    ForceActivationInviteResend = forceResend
                 },
                 cancellationToken);
 
@@ -282,17 +358,31 @@ namespace Toplanti.WebAPI.Controllers
                 ZoomProvisioningStatus.Active.ToString(),
                 StringComparison.OrdinalIgnoreCase);
 
+            var activationPending =
+                string.Equals(zoomStatus, ZoomProvisioningStatus.ActivationPending.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(zoomStatus, ZoomProvisioningStatus.ProvisioningPending.ToString(), StringComparison.OrdinalIgnoreCase);
+            var shouldEscalateToIt = activationPending
+                && !active
+                && await ShouldEscalateActivationPendingToItAsync(email, cancellationToken);
+            var uiAction = shouldEscalateToIt
+                ? UiActionContactIt
+                : ResolveZoomUiAction(zoomStatus);
+
             return Ok(new
             {
-                Success = true,
-                ErrorCode = string.Empty,
-                Message = active
-                    ? "Zoom account is active."
-                    : (string.IsNullOrWhiteSpace(checkResult.Message)
-                        ? "Zoom account activation is still pending."
-                        : checkResult.Message),
+                Success = active && !shouldEscalateToIt,
+                ErrorCode = shouldEscalateToIt ? AuthFlowCodes.BilisimContactRequired : string.Empty,
+                Message = shouldEscalateToIt
+                    ? "Zoom activation email could not be confirmed after multiple reminders. Please contact IT support."
+                    : (active
+                        ? "Zoom account is active."
+                        : (string.IsNullOrWhiteSpace(checkResult.Message)
+                            ? "Zoom account activation is still pending."
+                            : checkResult.Message)),
+                IsActive = active,
                 Data = active,
-                ZoomStatus = zoomStatus
+                ZoomStatus = zoomStatus,
+                ZoomUiAction = uiAction
             });
         }
 
@@ -367,7 +457,63 @@ namespace Toplanti.WebAPI.Controllers
                 });
             }
 
-            if (request.ForceOtpResend || string.IsNullOrWhiteSpace(request.OtpCode))
+            var checkResult = await _zoomProvisioningService.CheckAccountStatusAsync(
+                new CheckZoomAccountStatusRequest
+                {
+                    Email = email,
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty,
+                    ForceRefresh = true
+                },
+                cancellationToken);
+
+            if (!checkResult.Success)
+            {
+                return Ok(new
+                {
+                    Success = false,
+                    ErrorCode = checkResult.Code,
+                    Message = string.IsNullOrWhiteSpace(checkResult.Message)
+                        ? "Zoom hesap durumu kontrol edilemedi."
+                        : checkResult.Message
+                });
+            }
+
+            var zoomStatus = NormalizeStatusName(checkResult.StatusName);
+            var active = string.Equals(
+                zoomStatus,
+                ZoomProvisioningStatus.Active.ToString(),
+                StringComparison.OrdinalIgnoreCase);
+            var activationPending =
+                string.Equals(zoomStatus, ZoomProvisioningStatus.ActivationPending.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(zoomStatus, ZoomProvisioningStatus.ProvisioningPending.ToString(), StringComparison.OrdinalIgnoreCase);
+            var hasZoomAccount = active || activationPending;
+            if (!hasZoomAccount)
+            {
+                var externalLoginBlockedMessage = string.Equals(
+                    zoomStatus,
+                    ZoomProvisioningStatus.None.ToString(),
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "Bu e-posta adresi icin Zoom hesabi bulunamadi. Kurumsal olmayan kullanicilar uygulamaya giris yapamaz. Lutfen once Zoom hesabi olusturun."
+                    : (string.IsNullOrWhiteSpace(checkResult.Message)
+                        ? "Uygulamaya giris icin aktif bir Zoom hesabi gereklidir."
+                        : checkResult.Message);
+
+                return Ok(new
+                {
+                    Success = false,
+                    ErrorCode = "ZOOM_ACCOUNT_REQUIRED",
+                    Message = externalLoginBlockedMessage,
+                    Data = new
+                    {
+                        ZoomStatus = zoomStatus,
+                        ZoomStatusCode = checkResult.Code,
+                        ZoomUiAction = UiActionContactIt
+                    }
+                });
+            }
+
+            var otpCode = new string((request.OtpCode ?? string.Empty).Where(char.IsDigit).ToArray());
+            if (request.ForceOtpResend || string.IsNullOrWhiteSpace(otpCode))
             {
                 var generationResult = await _authenticationService.GenerateOtpAsync(
                     new GenerateOtpRequest
@@ -383,7 +529,7 @@ namespace Toplanti.WebAPI.Controllers
                         ? AuthFlowCodes.OtpDeliveryFailed
                         : AuthFlowCodes.OtpRequired;
 
-                    return BadRequest(new
+                    return Ok(new
                     {
                         Success = false,
                         ErrorCode = flowCode,
@@ -396,11 +542,11 @@ namespace Toplanti.WebAPI.Controllers
                     });
                 }
 
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = AuthFlowCodes.OtpRequired,
-                    Message = "OTP code sent. Please verify the code to complete sign-in.",
+                    Message = "Zoom hesabi dogrulandi. Girisi tamamlamak icin OTP kodu e-posta adresinize gonderildi.",
                     Data = new
                     {
                         generationResult.ExpiresAtUtc,
@@ -413,14 +559,14 @@ namespace Toplanti.WebAPI.Controllers
                 new VerifyOtpRequest
                 {
                     Email = email,
-                    OtpCode = request.OtpCode.Trim(),
+                    OtpCode = otpCode,
                     IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty
                 },
                 cancellationToken);
 
             if (!otpResult.Success || !otpResult.UserId.HasValue)
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = MapOtpVerificationErrorCode(otpResult.Code),
@@ -437,7 +583,8 @@ namespace Toplanti.WebAPI.Controllers
                 department,
                 isInternal: false,
                 successMessage: "OTP verification successful.",
-                cancellationToken);
+                cancellationToken,
+                forceDashboardForExternal: true);
         }
 
         private async Task<ActionResult> BuildAuthenticatedResponseAsync(
@@ -446,7 +593,8 @@ namespace Toplanti.WebAPI.Controllers
             string department,
             bool isInternal,
             string successMessage,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool forceDashboardForExternal = false)
         {
             var requiredStatusIds = Enum
                 .GetValues<ZoomProvisioningStatus>()
@@ -494,14 +642,34 @@ namespace Toplanti.WebAPI.Controllers
                 });
             }
 
-            if (!string.Equals(zoomOutcome.UiAction, UiActionDashboard, StringComparison.Ordinal))
+            var responseZoomStatus = zoomOutcome.ZoomStatus;
+            var responseZoomStatusCode = zoomOutcome.ZoomStatusCode;
+            var responseZoomUiAction = zoomOutcome.UiAction;
+
+            if (forceDashboardForExternal && !isInternal)
             {
-                var flowCode = string.Equals(zoomOutcome.UiAction, UiActionActivationWarning, StringComparison.Ordinal)
+                responseZoomStatus = ZoomProvisioningStatus.Active.ToString();
+                responseZoomUiAction = UiActionDashboard;
+            }
+
+            if (!string.Equals(responseZoomUiAction, UiActionDashboard, StringComparison.Ordinal))
+            {
+                var activationWarning = string.Equals(
+                    responseZoomUiAction,
+                    UiActionActivationWarning,
+                    StringComparison.Ordinal);
+                var shouldEscalateToIt = activationWarning
+                    && await ShouldEscalateActivationPendingToItAsync(email, cancellationToken);
+
+                var flowCode = activationWarning && !shouldEscalateToIt
                     ? AuthFlowCodes.ZoomActivationPending
                     : AuthFlowCodes.BilisimContactRequired;
-                var flowMessage = string.IsNullOrWhiteSpace(zoomOutcome.Message)
-                    ? ResolveFlowMessage(zoomOutcome.ZoomStatus)
-                    : zoomOutcome.Message;
+
+                var flowMessage = shouldEscalateToIt
+                    ? "Zoom activation email could not be confirmed after multiple reminders. Please contact IT support."
+                    : (string.IsNullOrWhiteSpace(zoomOutcome.Message)
+                        ? ResolveFlowMessage(zoomOutcome.ZoomStatus)
+                        : zoomOutcome.Message);
 
                 return Ok(new
                 {
@@ -513,9 +681,9 @@ namespace Toplanti.WebAPI.Controllers
                         UserId = userId,
                         Email = email,
                         Department = department,
-                        ZoomStatus = zoomOutcome.ZoomStatus,
-                        ZoomStatusCode = zoomOutcome.ZoomStatusCode,
-                        ZoomUiAction = zoomOutcome.UiAction
+                        ZoomStatus = responseZoomStatus,
+                        ZoomStatusCode = responseZoomStatusCode,
+                        ZoomUiAction = responseZoomUiAction
                     }
                 });
             }
@@ -533,9 +701,9 @@ namespace Toplanti.WebAPI.Controllers
                     Department = department,
                     Token = tokenResult.Token,
                     ExpiresAtUtc = tokenResult.ExpiresAtUtc,
-                    ZoomStatus = zoomOutcome.ZoomStatus,
-                    ZoomStatusCode = zoomOutcome.ZoomStatusCode,
-                    ZoomUiAction = zoomOutcome.UiAction
+                    ZoomStatus = responseZoomStatus,
+                    ZoomStatusCode = responseZoomStatusCode,
+                    ZoomUiAction = responseZoomUiAction
                 }
             });
         }
@@ -793,10 +961,47 @@ namespace Toplanti.WebAPI.Controllers
             if (string.Equals(zoomStatus, ZoomProvisioningStatus.ActivationPending.ToString(), StringComparison.OrdinalIgnoreCase)
                 || string.Equals(zoomStatus, ZoomProvisioningStatus.ProvisioningPending.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                return "Zoom activation is pending. Please verify your Zoom activation email.";
+                return "Zoom account exists but activation is still pending. Please approve the Zoom invitation email. If you already have a Zoom account, accept the account-join invitation.";
             }
 
             return "Zoom account is not ready. Please contact IT support.";
+        }
+
+        private async Task<bool> ShouldEscalateActivationPendingToItAsync(
+            string email,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return false;
+            }
+
+            var emailKey = email.Trim().ToUpperInvariant();
+            var provisioning = await _context.ZoomUserProvisionings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.EmailNormalized == emailKey, cancellationToken);
+
+            if (provisioning == null
+                || provisioning.ZoomStatusId != (byte)ZoomProvisioningStatus.ActivationPending)
+            {
+                return false;
+            }
+
+            var ageMinutes = (DateTime.UtcNow - provisioning.CreatedAt).TotalMinutes;
+            if (ageMinutes < _activationPendingEscalationMinutes)
+            {
+                return false;
+            }
+
+            const string activationInviteResendAction = "ACTIVATION_INVITE_RESEND";
+            var reminderCount = await _context.ZoomUserProvisioningHistories
+                .AsNoTracking()
+                .CountAsync(
+                    x => x.UserProvisioningId == provisioning.UserProvisioningId
+                         && x.ActionType == activationInviteResendAction,
+                    cancellationToken);
+
+            return reminderCount >= _activationPendingEscalationReminderCount;
         }
 
         private IEnumerable<string> ResolveRoles(string department, bool isInternal)
@@ -920,4 +1125,3 @@ namespace Toplanti.WebAPI.Controllers
         }
     }
 }
-

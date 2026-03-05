@@ -50,11 +50,26 @@ namespace Toplanti.Business.Concrete
                 var message = new MimeMessage();
                 message.From.Add(new MailboxAddress(fromName, fromEmail));
                 message.To.Add(MailboxAddress.Parse(email.Trim()));
-                message.Subject = "YEE Toplanti Giris Dogrulama Kodu";
-                message.Body = new TextPart("plain")
+                message.Subject = "YEE Toplantı Giriş Doğrulama Kodu";
+
+                var builder = new BodyBuilder
                 {
-                    Text = $"Giris dogrulama kodunuz: {code}\nKod tek kullanimliktir."
+                    TextBody = $"Giriş doğrulama kodunuz: {code}\nKod tek kullanımlıktır.",
+                    HtmlBody = $@"
+                        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;'>
+                            <h2 style='color: #2c3e50; text-align: center;'>YEE Toplantı Sistemi</h2>
+                            <p style='font-size: 16px; color: #333;'>Merhaba,</p>
+                            <p style='font-size: 16px; color: #333;'>Sisteme giriş yapabilmeniz için tek kullanımlık doğrulama kodunuz aşağıdadır:</p>
+                            <div style='text-align: center; margin: 30px 0;'>
+                                <span style='font-size: 32px; font-weight: bold; color: #e74c3c; letter-spacing: 5px; background: #f9f9f9; padding: 10px 20px; border-radius: 5px; display: inline-block;'>{code}</span>
+                            </div>
+                            <p style='font-size: 14px; color: #7f8c8d; text-align: center; border-top: 1px solid #eee; padding-top: 15px;'>
+                                <em>Bu kod tek kullanımlıktır. Lütfen kodunuzu kimseyle paylaşmayınız.</em>
+                            </p>
+                        </div>"
                 };
+
+                message.Body = builder.ToMessageBody();
 
                 using var client = new SmtpClient();
                 await client.ConnectAsync(host, port, MailKit.Security.SecureSocketOptions.StartTls);

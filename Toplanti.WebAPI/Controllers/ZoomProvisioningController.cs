@@ -25,6 +25,7 @@ namespace Toplanti.WebAPI.Controllers
         [HttpGet("status")]
         public async Task<ActionResult> GetStatus(
             [FromQuery] string email,
+            [FromQuery] bool forceResend,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(email))
@@ -42,7 +43,9 @@ namespace Toplanti.WebAPI.Controllers
                 {
                     Email = email,
                     ActorUserId = TryGetActorUserId(),
-                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty,
+                    ForceRefresh = true,
+                    ForceActivationInviteResend = forceResend
                 },
                 cancellationToken);
 

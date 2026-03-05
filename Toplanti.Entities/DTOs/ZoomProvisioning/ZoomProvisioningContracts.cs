@@ -9,6 +9,7 @@ namespace Toplanti.Entities.DTOs.ZoomProvisioning
         public Guid? ActorUserId { get; set; }
         public string IpAddress { get; set; } = string.Empty;
         public bool ForceRefresh { get; set; }
+        public bool ForceActivationInviteResend { get; set; }
     }
 
     public class ProvisionZoomUserRequest : IDto

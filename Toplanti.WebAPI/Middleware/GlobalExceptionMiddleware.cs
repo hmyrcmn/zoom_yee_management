@@ -24,6 +24,39 @@ namespace Toplanti.WebAPI.Middleware
             {
                 await _next(context);
             }
+            catch (UnauthorizedAccessException unauthorizedException)
+            {
+                _logger.LogWarning(
+                    unauthorizedException,
+                    "Authorization failure at {Method} {Path}. TraceId: {TraceId}",
+                    context.Request?.Method,
+                    context.Request?.Path.Value,
+                    context.TraceIdentifier);
+
+                if (context.Response.HasStarted)
+                {
+                    throw;
+                }
+
+                var isAuthenticated = context.User?.Identity?.IsAuthenticated == true;
+                context.Response.Clear();
+                context.Response.StatusCode = isAuthenticated
+                    ? (int)HttpStatusCode.Forbidden
+                    : (int)HttpStatusCode.Unauthorized;
+                context.Response.ContentType = "application/json";
+
+                var payload = new
+                {
+                    Success = false,
+                    ErrorCode = isAuthenticated ? "FORBIDDEN" : "UNAUTHORIZED",
+                    Message = isAuthenticated
+                        ? "You do not have permission to access this resource."
+                        : "Authentication is required."
+                };
+
+                var unauthorizedJson = JsonSerializer.Serialize(payload);
+                await context.Response.WriteAsync(unauthorizedJson);
+            }
             catch (Exception exception)
             {
                 _logger.LogError(

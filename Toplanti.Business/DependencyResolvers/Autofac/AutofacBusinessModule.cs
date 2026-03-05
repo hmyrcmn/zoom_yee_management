@@ -35,7 +35,7 @@ namespace Toplanti.Business.DependencyResolvers.Autofac
                 .EnableInterfaceInterceptors(new ProxyGenerationOptions()
                 {
                     Selector = new AspectInterceptorSelector()
-                }).SingleInstance();
+                }).InstancePerLifetimeScope();
 
         }
     }
