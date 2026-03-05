@@ -192,12 +192,37 @@ namespace Toplanti.WebAPI.Controllers
                 });
             }
 
+            var email = (request.Email ?? string.Empty).Trim();
+            var otpCodeRaw = (request.OtpCode ?? string.Empty).Trim();
+            var otpCode = new string(otpCodeRaw.Where(char.IsDigit).ToArray());
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(otpCode))
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    ErrorCode = AuthenticationResultCodes.InvalidRequest,
+                    Message = "Email and otpCode are required."
+                });
+            }
+
+            if (IsCorporateEmail(email))
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    ErrorCode = AuthenticationResultCodes.InvalidRequest,
+                    Message = "Corporate users must login with LDAP credentials."
+                });
+            }
+
+            request.Email = email;
+            request.OtpCode = otpCode;
             request.IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
             var otpResult = await _authenticationService.VerifyOtpAsync(request, cancellationToken);
 
             if (!otpResult.Success || !otpResult.UserId.HasValue)
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = MapOtpVerificationErrorCode(otpResult.Code),
@@ -236,7 +261,8 @@ namespace Toplanti.WebAPI.Controllers
                 new CheckZoomAccountStatusRequest
                 {
                     Email = email.Trim(),
-                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty,
+                    ForceRefresh = true
                 },
                 cancellationToken);
 
@@ -260,9 +286,53 @@ namespace Toplanti.WebAPI.Controllers
             {
                 Success = true,
                 ErrorCode = string.Empty,
-                Message = active ? "Zoom account is active." : "Zoom account activation is still pending.",
+                Message = active
+                    ? "Zoom account is active."
+                    : (string.IsNullOrWhiteSpace(checkResult.Message)
+                        ? "Zoom account activation is still pending."
+                        : checkResult.Message),
                 Data = active,
                 ZoomStatus = zoomStatus
+            });
+        }
+
+        [HttpGet("userinfo")]
+        public ActionResult GetUserInfo()
+        {
+            if (User?.Identity == null || !User.Identity.IsAuthenticated)
+            {
+                return Unauthorized(new
+                {
+                    Success = false,
+                    ErrorCode = "UNAUTHORIZED",
+                    Message = "Authentication is required."
+                });
+            }
+
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                ?? string.Empty;
+            var email = User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirstValue("email")
+                ?? string.Empty;
+            var department = User.FindFirstValue("department") ?? string.Empty;
+            var roles = User.FindAll(ClaimTypes.Role)
+                .Select(claim => claim.Value)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return Ok(new
+            {
+                Success = true,
+                Message = "User info loaded.",
+                Data = new
+                {
+                    UserId = userId,
+                    Email = email,
+                    Department = department,
+                    Roles = roles
+                }
             });
         }
 
@@ -410,7 +480,7 @@ namespace Toplanti.WebAPI.Controllers
 
             if (!zoomOutcome.Success)
             {
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = zoomOutcome.ErrorCode,
@@ -429,12 +499,15 @@ namespace Toplanti.WebAPI.Controllers
                 var flowCode = string.Equals(zoomOutcome.UiAction, UiActionActivationWarning, StringComparison.Ordinal)
                     ? AuthFlowCodes.ZoomActivationPending
                     : AuthFlowCodes.BilisimContactRequired;
+                var flowMessage = string.IsNullOrWhiteSpace(zoomOutcome.Message)
+                    ? ResolveFlowMessage(zoomOutcome.ZoomStatus)
+                    : zoomOutcome.Message;
 
-                return BadRequest(new
+                return Ok(new
                 {
                     Success = false,
                     ErrorCode = flowCode,
-                    Message = ResolveFlowMessage(zoomOutcome.ZoomStatus),
+                    Message = flowMessage,
                     Data = new
                     {
                         UserId = userId,
@@ -494,6 +567,7 @@ namespace Toplanti.WebAPI.Controllers
 
             var zoomStatus = NormalizeStatusName(checkResult.StatusName);
             var zoomStatusCode = checkResult.Code;
+            var zoomMessage = checkResult.Message;
 
             if (ShouldAttemptAutoProvision(email, zoomStatus))
             {
@@ -522,12 +596,14 @@ namespace Toplanti.WebAPI.Controllers
 
                 zoomStatus = NormalizeStatusName(provisionResult.StatusName);
                 zoomStatusCode = provisionResult.Code;
+                zoomMessage = provisionResult.Message;
             }
 
             return ZoomLoginOutcome.Ok(
                 zoomStatus,
                 zoomStatusCode,
-                ResolveZoomUiAction(zoomStatus));
+                ResolveZoomUiAction(zoomStatus),
+                zoomMessage);
         }
 
         private async Task<string> ResolveDepartmentAsync(Guid userId, string email, CancellationToken cancellationToken)
@@ -647,7 +723,7 @@ namespace Toplanti.WebAPI.Controllers
             return code switch
             {
                 AuthenticationResultCodes.OtpInvalid => AuthFlowCodes.OtpInvalid,
-                AuthenticationResultCodes.OtpExpiredOrNotFound => AuthFlowCodes.OtpInvalid,
+                AuthenticationResultCodes.OtpExpiredOrNotFound => AuthFlowCodes.OtpRequired,
                 AuthenticationResultCodes.OtpLocked => AuthFlowCodes.OtpInvalid,
                 _ => code
             };
@@ -815,12 +891,12 @@ namespace Toplanti.WebAPI.Controllers
             string ZoomStatusCode,
             string UiAction)
         {
-            public static ZoomLoginOutcome Ok(string zoomStatus, string zoomStatusCode, string uiAction)
+            public static ZoomLoginOutcome Ok(string zoomStatus, string zoomStatusCode, string uiAction, string message = "")
             {
                 return new ZoomLoginOutcome(
                     true,
                     string.Empty,
-                    string.Empty,
+                    message ?? string.Empty,
                     zoomStatus,
                     zoomStatusCode ?? string.Empty,
                     uiAction);

@@ -71,11 +71,53 @@ namespace Toplanti.Business.Concrete
                     "Actor has no active Zoom provisioning.");
             }
 
+            var sanitizedTopic = SanitizeMeetingText(request.Topic);
+            var sanitizedAgenda = SanitizeMeetingText(request.Agenda);
+            var normalizedTopic = NormalizeMeetingTextForComparison(sanitizedTopic);
+            var normalizedAgenda = NormalizeMeetingTextForComparison(sanitizedAgenda);
+            var normalizedTimezone = NormalizeTimezone(request.Timezone);
+            var normalizedStartTimeUtc = NormalizeStartTimeUtc(request.StartTimeUtc);
+
+            var duplicateMeeting = await FindDuplicateMeetingAsync(
+                actorUserId,
+                normalizedTopic,
+                normalizedAgenda,
+                normalizedStartTimeUtc,
+                request.DurationMinutes,
+                normalizedTimezone,
+                cancellationToken);
+
+            if (duplicateMeeting != null)
+            {
+                AddAuditLog(
+                    actorUserId,
+                    "CREATE_MEETING",
+                    provisioning.Email,
+                    duplicateMeeting.ZoomMeetingId,
+                    ZoomMeetingResultCodes.MeetingDuplicate,
+                    "Duplicate meeting request blocked.");
+
+                await _context.SaveChangesAsync(cancellationToken);
+
+                return MeetingFailure(
+                    ZoomMeetingResultCodes.MeetingDuplicate,
+                    "An identical meeting already exists for this time slot.");
+            }
+
+            var normalizedRequest = new CreateZoomMeetingRequest
+            {
+                Topic = sanitizedTopic,
+                Agenda = sanitizedAgenda,
+                StartTimeUtc = normalizedStartTimeUtc,
+                DurationMinutes = request.DurationMinutes,
+                Timezone = normalizedTimezone
+            };
+
             var hostIdentifier = !string.IsNullOrWhiteSpace(provisioning.ZoomUserId)
                 ? provisioning.ZoomUserId
                 : provisioning.Email;
 
-            var createApiResponse = await CreateZoomMeetingApiAsync(hostIdentifier, request, cancellationToken);
+            var createApiResponse = await CreateZoomMeetingApiAsync(hostIdentifier, normalizedRequest, cancellationToken);
             if (!createApiResponse.Success)
             {
                 AddAuditLog(
@@ -478,6 +520,66 @@ namespace Toplanti.Business.Concrete
                 StartUrl = meeting.StartUrl,
                 CreatedAtUtc = meeting.CreatedAt
             };
+        }
+
+        private async Task<ZoomMeeting?> FindDuplicateMeetingAsync(
+            Guid ownerUserId,
+            string normalizedTopic,
+            string normalizedAgenda,
+            DateTime normalizedStartTimeUtc,
+            int durationMinutes,
+            string normalizedTimezone,
+            CancellationToken cancellationToken)
+        {
+            var windowStartUtc = normalizedStartTimeUtc.AddMinutes(-1);
+            var windowEndUtc = normalizedStartTimeUtc.AddMinutes(1);
+
+            var candidates = await _context.ZoomMeetings
+                .AsNoTracking()
+                .Where(x => x.OwnerUserId == ownerUserId && !x.IsDeleted)
+                .Where(x => x.StartTimeUtc.HasValue
+                    && x.StartTimeUtc.Value >= windowStartUtc
+                    && x.StartTimeUtc.Value <= windowEndUtc)
+                .Where(x => x.DurationMinutes.HasValue && x.DurationMinutes.Value == durationMinutes)
+                .ToListAsync(cancellationToken);
+
+            return candidates.FirstOrDefault(x =>
+                NormalizeMeetingTextForComparison(x.Topic) == normalizedTopic
+                && NormalizeMeetingTextForComparison(x.Agenda) == normalizedAgenda
+                && NormalizeTimezone(x.Timezone) == normalizedTimezone);
+        }
+
+        private static string SanitizeMeetingText(string? value)
+        {
+            return (value ?? string.Empty).Trim();
+        }
+
+        private static string NormalizeMeetingTextForComparison(string? value)
+        {
+            return SanitizeMeetingText(value).ToUpperInvariant();
+        }
+
+        private static string NormalizeTimezone(string? timezone)
+        {
+            var normalized = (timezone ?? string.Empty).Trim().ToUpperInvariant();
+            return string.IsNullOrWhiteSpace(normalized) ? "UTC" : normalized;
+        }
+
+        private static DateTime NormalizeStartTimeUtc(DateTime value)
+        {
+            var source = value == default ? DateTime.UtcNow : value;
+            var utc = source.Kind == DateTimeKind.Utc
+                ? source
+                : source.ToUniversalTime();
+
+            return new DateTime(
+                utc.Year,
+                utc.Month,
+                utc.Day,
+                utc.Hour,
+                utc.Minute,
+                0,
+                DateTimeKind.Utc);
         }
 
         private void AddAuditLog(

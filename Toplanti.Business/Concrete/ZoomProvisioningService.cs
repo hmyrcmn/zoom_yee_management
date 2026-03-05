@@ -37,6 +37,7 @@ namespace Toplanti.Business.Concrete
         private const string ActionWebhookActivated = "WEBHOOK_USER_ACTIVATED";
         private const string ActionSyncExternalLookup = "SYNC_EXTERNAL_LOOKUP";
         private const string ActionWebhookDiscovery = "WEBHOOK_DISCOVERY";
+        private const string ActionActivationInviteResend = "ACTIVATION_INVITE_RESEND";
 
         private readonly ToplantiContext _context;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -46,6 +47,7 @@ namespace Toplanti.Business.Concrete
         private readonly string _webhookSecretToken;
         private readonly int _webhookTimestampToleranceSeconds;
         private readonly bool _skipWebhookSignatureValidation;
+        private readonly int _activationInviteResendIntervalMinutes;
 
         public ZoomProvisioningService(
             ToplantiContext context,
@@ -65,6 +67,10 @@ namespace Toplanti.Business.Concrete
                 0,
                 configuration.GetValue<int?>("ZoomWebhook:TimestampToleranceSeconds") ?? 300);
             _skipWebhookSignatureValidation = configuration.GetValue<bool>("ZoomWebhook:SkipSignatureValidation");
+            _activationInviteResendIntervalMinutes = Math.Clamp(
+                configuration.GetValue<int?>("ZoomProvisioning:ActivationInviteResendIntervalMinutes") ?? 15,
+                1,
+                1440);
         }
 
         public async Task<ZoomAccountStatusResult> CheckAccountStatusAsync(
@@ -82,27 +88,117 @@ namespace Toplanti.Business.Concrete
             var emailKey = NormalizeEmailKey(email);
             var actorUserId = request.ActorUserId;
             var ipAddress = NormalizeIp(request.IpAddress);
+            var forceRefresh = request.ForceRefresh;
 
             await EnsureStatusCatalogAsync(cancellationToken);
 
             var existingProvisioning = await _context.ZoomUserProvisionings
-                .AsNoTracking()
                 .Include(x => x.ZoomStatus)
                 .FirstOrDefaultAsync(x => x.EmailNormalized == emailKey, cancellationToken);
 
             if (existingProvisioning != null)
             {
-                _logger.LogInformation("Zoom provisioning status fetched from local db for {Email}", email);
+                // Keep Active users fast-path from local state unless caller explicitly requires a fresh Zoom check.
+                var shouldRefreshFromZoom =
+                    forceRefresh || existingProvisioning.ZoomStatusId != (byte)ZoomProvisioningStatus.Active;
+                var statusMessage = shouldRefreshFromZoom
+                    ? "Provisioning status refreshed from Zoom."
+                    : "Provisioning status fetched from local storage.";
+
+                if (shouldRefreshFromZoom)
+                {
+                    var refreshAt = DateTime.UtcNow;
+                    var refreshLookup = await GetZoomUserByEmailAsync(email, cancellationToken);
+                    var previousStatusId = existingProvisioning.ZoomStatusId;
+                    var nextStatusId = previousStatusId;
+
+                    if (refreshLookup.Exists)
+                    {
+                        nextStatusId = string.Equals(refreshLookup.ZoomStatus, "active", StringComparison.OrdinalIgnoreCase)
+                            ? (byte)ZoomProvisioningStatus.Active
+                            : (byte)ZoomProvisioningStatus.ActivationPending;
+                    }
+                    else if (!refreshLookup.IsRateLimited && string.IsNullOrWhiteSpace(refreshLookup.ErrorCode))
+                    {
+                        nextStatusId = (byte)ZoomProvisioningStatus.None;
+                    }
+
+                    existingProvisioning.ZoomStatusId = nextStatusId;
+                    if (!string.IsNullOrWhiteSpace(refreshLookup.ZoomUserId))
+                    {
+                        existingProvisioning.ZoomUserId = refreshLookup.ZoomUserId;
+                    }
+
+                    existingProvisioning.LastErrorCode = string.IsNullOrWhiteSpace(refreshLookup.ErrorCode)
+                        ? null
+                        : refreshLookup.ErrorCode;
+                    existingProvisioning.LastErrorMessage = string.IsNullOrWhiteSpace(refreshLookup.ErrorMessage)
+                        ? null
+                        : refreshLookup.ErrorMessage;
+                    existingProvisioning.LastSyncedAt = refreshAt;
+                    existingProvisioning.UpdatedAt = refreshAt;
+
+                    AddHistory(
+                        existingProvisioning,
+                        fromStatusId: previousStatusId,
+                        toStatusId: existingProvisioning.ZoomStatusId,
+                        actionType: ActionSyncExternalLookup,
+                        actorUserId: actorUserId,
+                        source: SourceSystem,
+                        httpStatusCode: refreshLookup.HttpStatusCode,
+                        message: refreshLookup.ErrorMessage,
+                        rawResponse: refreshLookup.RawResponse,
+                        requestIpAddress: ipAddress);
+
+                    AddAuditLog(
+                        actorUserId,
+                        "CHECK_ACCOUNT_STATUS",
+                        email,
+                        null,
+                        ZoomProvisioningResultCodes.StatusFetched,
+                        $"Status refreshed from Zoom. {ResolveStatusName(previousStatusId)} -> {ResolveStatusName(existingProvisioning.ZoomStatusId)}",
+                        ipAddress);
+
+                    if (existingProvisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.ActivationPending)
+                    {
+                        var resendResult = await TryResendActivationInviteIfDueAsync(
+                            existingProvisioning,
+                            actorUserId,
+                            ipAddress,
+                            cancellationToken);
+
+                        if (!string.IsNullOrWhiteSpace(resendResult.Message))
+                        {
+                            statusMessage = resendResult.Message;
+                        }
+                    }
+
+                    await _context.SaveChangesAsync(cancellationToken);
+
+                    _logger.LogInformation(
+                        "Zoom provisioning status refreshed for {Email}. LocalStatus={Status}, Http={Http}",
+                        email,
+                        ResolveStatusName(existingProvisioning.ZoomStatusId),
+                        refreshLookup.HttpStatusCode);
+                }
+                else
+                {
+                    _logger.LogInformation("Zoom provisioning status fetched from local db for {Email}", email);
+                }
+
                 return new ZoomAccountStatusResult
                 {
                     Success = true,
                     Code = ZoomProvisioningResultCodes.StatusFetched,
-                    Message = "Provisioning status fetched from local storage.",
+                    Message = statusMessage,
                     UserProvisioningId = existingProvisioning.UserProvisioningId,
                     Email = existingProvisioning.Email,
                     StatusName = existingProvisioning.ZoomStatus?.Name ?? ResolveStatusName(existingProvisioning.ZoomStatusId),
                     ExistsInLocalProvisioning = true,
-                    ExistsInZoomWorkspace = !string.IsNullOrWhiteSpace(existingProvisioning.ZoomUserId),
+                    ExistsInZoomWorkspace =
+                        existingProvisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.Active
+                        || existingProvisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.ActivationPending
+                        || !string.IsNullOrWhiteSpace(existingProvisioning.ZoomUserId),
                     ZoomUserId = existingProvisioning.ZoomUserId ?? string.Empty,
                     LastSyncedAtUtc = existingProvisioning.LastSyncedAt
                 };
@@ -233,6 +329,30 @@ namespace Toplanti.Business.Concrete
                     Success = true,
                     Code = ZoomProvisioningResultCodes.ProvisioningConflictActivated,
                     Message = "User is already active in Zoom.",
+                    UserProvisioningId = provisioning.UserProvisioningId,
+                    Email = provisioning.Email,
+                    StatusName = ResolveStatusName(provisioning.ZoomStatusId),
+                    ZoomUserId = provisioning.ZoomUserId ?? string.Empty
+                };
+            }
+
+            if (provisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.ActivationPending)
+            {
+                var resendResult = await TryResendActivationInviteIfDueAsync(
+                    provisioning,
+                    actorUserId,
+                    ipAddress,
+                    cancellationToken);
+
+                await _context.SaveChangesAsync(cancellationToken);
+
+                return new ZoomProvisionUserResult
+                {
+                    Success = true,
+                    Code = ZoomProvisioningResultCodes.ProvisioningStarted,
+                    Message = string.IsNullOrWhiteSpace(resendResult.Message)
+                        ? "Provisioning already pending. Check your Zoom activation email."
+                        : resendResult.Message,
                     UserProvisioningId = provisioning.UserProvisioningId,
                     Email = provisioning.Email,
                     StatusName = ResolveStatusName(provisioning.ZoomStatusId),
@@ -820,6 +940,7 @@ namespace Toplanti.Business.Concrete
                 Rule((byte)ZoomProvisioningStatus.ProvisioningPending, (byte)ZoomProvisioningStatus.Failed, ActionApiRateLimit, "Rate limit failure"),
                 Rule((byte)ZoomProvisioningStatus.ProvisioningPending, (byte)ZoomProvisioningStatus.Failed, ActionApiError, "API failure"),
                 Rule((byte)ZoomProvisioningStatus.ActivationPending, (byte)ZoomProvisioningStatus.Active, ActionWebhookActivated, "Activation webhook"),
+                Rule((byte)ZoomProvisioningStatus.ActivationPending, (byte)ZoomProvisioningStatus.ActivationPending, ActionActivationInviteResend, "Activation invite resend"),
                 Rule((byte)ZoomProvisioningStatus.None, (byte)ZoomProvisioningStatus.Active, ActionSyncExternalLookup, "External discovery in active state"),
                 Rule((byte)ZoomProvisioningStatus.None, (byte)ZoomProvisioningStatus.Active, ActionWebhookDiscovery, "Webhook discovered active account")
             };
@@ -860,6 +981,205 @@ namespace Toplanti.Business.Concrete
             {
                 await _context.SaveChangesAsync(cancellationToken);
             }
+        }
+
+        private async Task<ActivationInviteResendResult> TryResendActivationInviteIfDueAsync(
+            ZoomUserProvisioning provisioning,
+            Guid? actorUserId,
+            string ipAddress,
+            CancellationToken cancellationToken)
+        {
+            if (provisioning == null
+                || provisioning.ZoomStatusId != (byte)ZoomProvisioningStatus.ActivationPending
+                || string.IsNullOrWhiteSpace(provisioning.Email))
+            {
+                return ActivationInviteResendResult.NotAttempted(string.Empty);
+            }
+
+            var now = DateTime.UtcNow;
+            var lastResendAt = await _context.ZoomUserProvisioningHistories
+                .AsNoTracking()
+                .Where(x => x.UserProvisioningId == provisioning.UserProvisioningId
+                            && x.ActionType == ActionActivationInviteResend)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => (DateTime?)x.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (lastResendAt.HasValue)
+            {
+                var nextResendAt = lastResendAt.Value.AddMinutes(_activationInviteResendIntervalMinutes);
+                if (nextResendAt > now)
+                {
+                    var secondsRemaining = Math.Max(
+                        1,
+                        (int)Math.Ceiling((nextResendAt - now).TotalSeconds));
+
+                    return ActivationInviteResendResult.NotAttempted(
+                        $"Check your email to activate Zoom. Next reminder will be retried in {secondsRemaining} seconds.");
+                }
+            }
+
+            var inviteResponse = await ResendActivationInviteAsync(provisioning.Email, cancellationToken);
+
+            provisioning.LastErrorCode = string.IsNullOrWhiteSpace(inviteResponse.ErrorCode)
+                ? null
+                : inviteResponse.ErrorCode;
+            provisioning.LastErrorMessage = string.IsNullOrWhiteSpace(inviteResponse.ErrorMessage)
+                ? null
+                : inviteResponse.ErrorMessage;
+            provisioning.LastSyncedAt = now;
+            provisioning.UpdatedAt = now;
+
+            AddHistory(
+                provisioning,
+                (byte)ZoomProvisioningStatus.ActivationPending,
+                (byte)ZoomProvisioningStatus.ActivationPending,
+                ActionActivationInviteResend,
+                actorUserId,
+                SourceSystem,
+                inviteResponse.HttpStatusCode,
+                inviteResponse.Success
+                    ? "Zoom activation invite reminder requested."
+                    : inviteResponse.ErrorMessage,
+                inviteResponse.RawResponse,
+                ipAddress);
+
+            AddAuditLog(
+                actorUserId,
+                "CHECK_ACCOUNT_STATUS",
+                provisioning.Email,
+                null,
+                inviteResponse.Success
+                    ? ZoomProvisioningResultCodes.StatusFetched
+                    : ZoomProvisioningResultCodes.ProvisioningFailed,
+                inviteResponse.Success
+                    ? "Activation invite reminder triggered."
+                    : $"Activation invite reminder failed: {inviteResponse.ErrorMessage}",
+                ipAddress);
+
+            if (inviteResponse.Success)
+            {
+                _logger.LogInformation("Zoom activation invite reminder triggered for {Email}", provisioning.Email);
+                return ActivationInviteResendResult.AttemptedSuccess(
+                    "Activation is still pending. We re-sent a Zoom activation reminder email.");
+            }
+
+            _logger.LogWarning(
+                "Zoom activation invite reminder failed for {Email}. Http={Http}, ErrorCode={Code}, Error={Error}",
+                provisioning.Email,
+                inviteResponse.HttpStatusCode,
+                inviteResponse.ErrorCode,
+                inviteResponse.ErrorMessage);
+
+            return ActivationInviteResendResult.AttemptedFailure(
+                "Activation is still pending. Zoom reminder could not be sent right now; please try again shortly.");
+        }
+
+        private async Task<ZoomActivationInviteResponse> ResendActivationInviteAsync(
+            string email,
+            CancellationToken cancellationToken)
+        {
+            var normalizedEmail = NormalizeEmail(email);
+            var (firstName, lastName) = BuildFallbackName(normalizedEmail);
+
+            using var client = await CreateZoomHttpClientAsync(cancellationToken);
+            var payload = new
+            {
+                action = "create",
+                user_info = new
+                {
+                    email = normalizedEmail,
+                    type = 1,
+                    first_name = firstName,
+                    last_name = lastName
+                }
+            };
+
+            using var response = await client.PostAsJsonAsync("users", payload, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return ZoomActivationInviteResponse.FromSuccess((int)response.StatusCode, body);
+            }
+
+            if (response.StatusCode == HttpStatusCode.Conflict)
+            {
+                return ZoomActivationInviteResponse.FromSuccess((int)response.StatusCode, body);
+            }
+
+            var errorMessage = ExtractZoomErrorMessage(body, "Zoom activation invite request failed.");
+
+            if (response.StatusCode == HttpStatusCode.BadRequest
+                && LooksLikeAlreadyInvitedResponse(errorMessage))
+            {
+                return ZoomActivationInviteResponse.FromSuccess((int)response.StatusCode, body);
+            }
+
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                return ZoomActivationInviteResponse.FromFailure(
+                    (int)response.StatusCode,
+                    "429",
+                    errorMessage,
+                    body);
+            }
+
+            return ZoomActivationInviteResponse.FromFailure(
+                (int)response.StatusCode,
+                ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture),
+                errorMessage,
+                body);
+        }
+
+        private static bool LooksLikeAlreadyInvitedResponse(string message)
+        {
+            var normalized = (message ?? string.Empty).Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            return normalized.Contains("already", StringComparison.Ordinal)
+                || normalized.Contains("invited", StringComparison.Ordinal)
+                || normalized.Contains("exist", StringComparison.Ordinal)
+                || normalized.Contains("pending", StringComparison.Ordinal);
+        }
+
+        private static (string FirstName, string LastName) BuildFallbackName(string email)
+        {
+            var localPart = (email ?? string.Empty)
+                .Split('@')
+                .FirstOrDefault() ?? string.Empty;
+
+            var parts = localPart
+                .Split(new[] { '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(TitleCaseInvariant)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            if (parts.Count >= 2)
+            {
+                return (parts[0], string.Join(" ", parts.Skip(1)));
+            }
+
+            if (parts.Count == 1)
+            {
+                return (parts[0], "User");
+            }
+
+            return ("User", "Account");
+        }
+
+        private static string TitleCaseInvariant(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return string.Empty;
+            }
+
+            var trimmed = input.Trim().ToLowerInvariant();
+            return char.ToUpperInvariant(trimmed[0]) + trimmed[1..];
         }
 
         private async Task<bool> IsTransitionAllowedAsync(
@@ -1333,6 +1653,78 @@ namespace Toplanti.Business.Concrete
             public string ErrorCode { get; init; } = string.Empty;
             public string ErrorMessage { get; init; } = string.Empty;
             public string RawResponse { get; init; } = string.Empty;
+        }
+
+        private sealed class ZoomActivationInviteResponse
+        {
+            public bool Success { get; init; }
+            public int HttpStatusCode { get; init; }
+            public string ErrorCode { get; init; } = string.Empty;
+            public string ErrorMessage { get; init; } = string.Empty;
+            public string RawResponse { get; init; } = string.Empty;
+
+            public static ZoomActivationInviteResponse FromSuccess(int httpStatusCode, string rawResponse)
+            {
+                return new ZoomActivationInviteResponse
+                {
+                    Success = true,
+                    HttpStatusCode = httpStatusCode,
+                    RawResponse = rawResponse ?? string.Empty
+                };
+            }
+
+            public static ZoomActivationInviteResponse FromFailure(
+                int httpStatusCode,
+                string errorCode,
+                string errorMessage,
+                string rawResponse)
+            {
+                return new ZoomActivationInviteResponse
+                {
+                    Success = false,
+                    HttpStatusCode = httpStatusCode,
+                    ErrorCode = errorCode ?? string.Empty,
+                    ErrorMessage = errorMessage ?? string.Empty,
+                    RawResponse = rawResponse ?? string.Empty
+                };
+            }
+        }
+
+        private sealed class ActivationInviteResendResult
+        {
+            public bool Attempted { get; init; }
+            public bool Success { get; init; }
+            public string Message { get; init; } = string.Empty;
+
+            public static ActivationInviteResendResult NotAttempted(string message)
+            {
+                return new ActivationInviteResendResult
+                {
+                    Attempted = false,
+                    Success = true,
+                    Message = message ?? string.Empty
+                };
+            }
+
+            public static ActivationInviteResendResult AttemptedSuccess(string message)
+            {
+                return new ActivationInviteResendResult
+                {
+                    Attempted = true,
+                    Success = true,
+                    Message = message ?? string.Empty
+                };
+            }
+
+            public static ActivationInviteResendResult AttemptedFailure(string message)
+            {
+                return new ActivationInviteResendResult
+                {
+                    Attempted = true,
+                    Success = false,
+                    Message = message ?? string.Empty
+                };
+            }
         }
 
         private sealed class ParsedWebhookPayload

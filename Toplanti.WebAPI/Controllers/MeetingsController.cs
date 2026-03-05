@@ -77,6 +77,50 @@ namespace Toplanti.WebAPI.Controllers
             });
         }
 
+        [HttpGet("~/api/Zoom/usermeetings")]
+        public async Task<ActionResult> GetLegacyUserMeetings(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 200,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetActorUserId(out var actorUserId))
+            {
+                return Unauthorized(new
+                {
+                    Success = false,
+                    ErrorCode = ZoomMeetingResultCodes.InvalidRequest,
+                    Message = "Authenticated actor is required."
+                });
+            }
+
+            var result = await _zoomMeetingService.GetHistoryAsync(
+                actorUserId,
+                pageNumber,
+                pageSize,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    ErrorCode = result.Code,
+                    Message = result.Message
+                });
+            }
+
+            return Ok(new
+            {
+                Success = true,
+                Message = result.Message,
+                Data = result.Meetings,
+                Meetings = result.Meetings,
+                PageNumber = result.PageNumber,
+                PageSize = result.PageSize,
+                TotalCount = result.TotalCount
+            });
+        }
+
         [HttpGet("{meetingId:guid}")]
         public async Task<ActionResult> GetMeetingById(
             Guid meetingId,
@@ -149,6 +193,19 @@ namespace Toplanti.WebAPI.Controllers
                     StringComparison.OrdinalIgnoreCase))
             {
                 return BadRequest(new
+                {
+                    Success = false,
+                    ErrorCode = result.Code,
+                    Message = result.Message
+                });
+            }
+
+            if (string.Equals(
+                    result.Code,
+                    ZoomMeetingResultCodes.MeetingDuplicate,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return Conflict(new
                 {
                     Success = false,
                     ErrorCode = result.Code,

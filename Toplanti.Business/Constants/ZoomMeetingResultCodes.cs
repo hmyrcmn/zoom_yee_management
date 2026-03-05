@@ -3,6 +3,7 @@ namespace Toplanti.Business.Constants
     public static class ZoomMeetingResultCodes
     {
         public const string InvalidRequest = "ZOOM_MEETING_INVALID_REQUEST";
+        public const string MeetingDuplicate = "ZOOM_MEETING_DUPLICATE";
         public const string MeetingCreated = "ZOOM_MEETING_CREATED";
         public const string MeetingDeleted = "ZOOM_MEETING_DELETED";
         public const string MeetingHistoryFetched = "ZOOM_MEETING_HISTORY_FETCHED";

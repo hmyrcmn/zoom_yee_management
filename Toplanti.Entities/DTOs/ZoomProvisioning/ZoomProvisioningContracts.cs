@@ -8,6 +8,7 @@ namespace Toplanti.Entities.DTOs.ZoomProvisioning
         public string Email { get; set; } = string.Empty;
         public Guid? ActorUserId { get; set; }
         public string IpAddress { get; set; } = string.Empty;
+        public bool ForceRefresh { get; set; }
     }
 
     public class ProvisionZoomUserRequest : IDto
