@@ -57,18 +57,59 @@ namespace Toplanti.Business.Concrete
                     "Actor, topic and positive duration are required.");
             }
 
-            var provisioning = await _context.ZoomUserProvisionings
+            var actorIdentity = await _context.AuthUsers
                 .AsNoTracking()
+                .Where(x => x.UserId == actorUserId)
+                .Select(x => new
+                {
+                    x.Email,
+                    x.EmailNormalized,
+                    x.IsInternal
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var allowedStatusIds = new[]
+            {
+                (byte)ZoomProvisioningStatus.Active,
+                (byte)ZoomProvisioningStatus.ActivationPending,
+                (byte)ZoomProvisioningStatus.ProvisioningPending
+            };
+
+            var provisioning = await _context.ZoomUserProvisionings
                 .FirstOrDefaultAsync(
                     x => x.UserId == actorUserId
-                         && x.ZoomStatusId == (byte)ZoomProvisioningStatus.Active,
+                         && allowedStatusIds.Contains(x.ZoomStatusId),
                     cancellationToken);
 
-            if (provisioning == null)
+            if (provisioning == null && !string.IsNullOrWhiteSpace(actorIdentity?.EmailNormalized))
+            {
+                // OTP/external flow can create provisioning by email before user linkage.
+                provisioning = await _context.ZoomUserProvisionings
+                    .FirstOrDefaultAsync(
+                        x => x.EmailNormalized == actorIdentity.EmailNormalized
+                             && allowedStatusIds.Contains(x.ZoomStatusId),
+                        cancellationToken);
+
+                if (provisioning != null && provisioning.UserId != actorUserId)
+                {
+                    provisioning.UserId = actorUserId;
+                    provisioning.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+            }
+
+            var hostIdentifier = !string.IsNullOrWhiteSpace(provisioning?.ZoomUserId)
+                ? provisioning.ZoomUserId
+                : !string.IsNullOrWhiteSpace(provisioning?.Email)
+                    ? provisioning.Email
+                    : actorIdentity?.Email ?? string.Empty;
+            var auditEmail = provisioning?.Email ?? actorIdentity?.Email ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(hostIdentifier))
             {
                 return MeetingFailure(
                     ZoomMeetingResultCodes.InvalidRequest,
-                    "Actor has no active Zoom provisioning.");
+                    "Actor has no Zoom identity for meeting creation.");
             }
 
             var sanitizedTopic = SanitizeMeetingText(request.Topic);
@@ -92,7 +133,7 @@ namespace Toplanti.Business.Concrete
                 AddAuditLog(
                     actorUserId,
                     "CREATE_MEETING",
-                    provisioning.Email,
+                    auditEmail,
                     duplicateMeeting.ZoomMeetingId,
                     ZoomMeetingResultCodes.MeetingDuplicate,
                     "Duplicate meeting request blocked.");
@@ -113,17 +154,31 @@ namespace Toplanti.Business.Concrete
                 Timezone = normalizedTimezone
             };
 
-            var hostIdentifier = !string.IsNullOrWhiteSpace(provisioning.ZoomUserId)
-                ? provisioning.ZoomUserId
-                : provisioning.Email;
-
+            var isExternalActor = actorIdentity?.IsInternal == false;
             var createApiResponse = await CreateZoomMeetingApiAsync(hostIdentifier, normalizedRequest, cancellationToken);
+            if (!createApiResponse.Success
+                && ShouldRetryMeetingCreateWithSharedHost(
+                    isExternalActor,
+                    provisioning?.ZoomStatusId,
+                    hostIdentifier))
+            {
+                var fallbackResponse = await CreateZoomMeetingApiAsync("me", normalizedRequest, cancellationToken);
+                if (fallbackResponse.Success)
+                {
+                    createApiResponse = fallbackResponse;
+                }
+                else if (string.IsNullOrWhiteSpace(createApiResponse.ErrorMessage))
+                {
+                    createApiResponse = fallbackResponse;
+                }
+            }
+
             if (!createApiResponse.Success)
             {
                 AddAuditLog(
                     actorUserId,
                     "CREATE_MEETING",
-                    provisioning.Email,
+                    auditEmail,
                     null,
                     ZoomMeetingResultCodes.MeetingCreateFailed,
                     createApiResponse.ErrorMessage);
@@ -138,7 +193,7 @@ namespace Toplanti.Business.Concrete
             {
                 MeetingId = Guid.NewGuid(),
                 OwnerUserId = actorUserId,
-                UserProvisioningId = provisioning.UserProvisioningId,
+                UserProvisioningId = provisioning?.UserProvisioningId,
                 ZoomMeetingId = createApiResponse.ZoomMeetingId,
                 Topic = createApiResponse.Topic,
                 Agenda = createApiResponse.Agenda,
@@ -155,7 +210,7 @@ namespace Toplanti.Business.Concrete
             AddAuditLog(
                 actorUserId,
                 "CREATE_MEETING",
-                provisioning.Email,
+                auditEmail,
                 meeting.ZoomMeetingId,
                 ZoomMeetingResultCodes.MeetingCreated,
                 "Zoom meeting created successfully.");
@@ -580,6 +635,26 @@ namespace Toplanti.Business.Concrete
                 utc.Minute,
                 0,
                 DateTimeKind.Utc);
+        }
+
+        private static bool ShouldRetryMeetingCreateWithSharedHost(
+            bool isExternalActor,
+            byte? provisioningStatusId,
+            string hostIdentifier)
+        {
+            if (!isExternalActor || string.Equals(hostIdentifier, "me", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!provisioningStatusId.HasValue)
+            {
+                return true;
+            }
+
+            return provisioningStatusId.Value == (byte)ZoomProvisioningStatus.None
+                   || provisioningStatusId.Value == (byte)ZoomProvisioningStatus.ProvisioningPending
+                   || provisioningStatusId.Value == (byte)ZoomProvisioningStatus.ActivationPending;
         }
 
         private void AddAuditLog(

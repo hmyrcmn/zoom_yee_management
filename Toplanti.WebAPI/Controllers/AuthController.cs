@@ -87,6 +87,57 @@ namespace Toplanti.WebAPI.Controllers
                 });
             }
 
+            var checkResult = await _zoomProvisioningService.CheckAccountStatusAsync(
+                new CheckZoomAccountStatusRequest
+                {
+                    Email = email,
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty,
+                    ForceRefresh = true
+                },
+                cancellationToken);
+
+            if (!checkResult.Success)
+            {
+                return Ok(new
+                {
+                    Success = false,
+                    ErrorCode = checkResult.Code,
+                    Message = string.IsNullOrWhiteSpace(checkResult.Message)
+                        ? "Zoom hesap durumu kontrol edilemedi."
+                        : checkResult.Message
+                });
+            }
+
+            var zoomStatus = NormalizeStatusName(checkResult.StatusName);
+            var hasZoomAccount = string.Equals(
+                                     zoomStatus,
+                                     ZoomProvisioningStatus.Active.ToString(),
+                                     StringComparison.OrdinalIgnoreCase)
+                                 || string.Equals(
+                                     zoomStatus,
+                                     ZoomProvisioningStatus.ActivationPending.ToString(),
+                                     StringComparison.OrdinalIgnoreCase)
+                                 || string.Equals(
+                                     zoomStatus,
+                                     ZoomProvisioningStatus.ProvisioningPending.ToString(),
+                                     StringComparison.OrdinalIgnoreCase);
+
+            if (!hasZoomAccount)
+            {
+                return Ok(new
+                {
+                    Success = false,
+                    ErrorCode = "ZOOM_ACCOUNT_REQUIRED",
+                    Message = "Bu e-posta adresi icin Zoom hesabi bulunamadi. Kurumsal olmayan kullanicilar uygulamaya giris yapamaz. Lutfen once Zoom hesabi olusturun.",
+                    Data = new
+                    {
+                        ZoomStatus = zoomStatus,
+                        ZoomStatusCode = checkResult.Code,
+                        ZoomUiAction = UiActionContactIt
+                    }
+                });
+            }
+
             var generationResult = await _authenticationService.GenerateOtpAsync(
                 new GenerateOtpRequest
                 {

@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -287,7 +288,47 @@ namespace Toplanti.Business.Concrete
                     : "Local status initialized from external lookup.",
                 ipAddress);
 
-            await _context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException dbUpdateException) when (IsUniqueConstraintViolation(dbUpdateException))
+            {
+                _logger.LogWarning(
+                    dbUpdateException,
+                    "Concurrent provisioning insert detected for {Email}. Loading latest row.",
+                    email);
+
+                _context.ChangeTracker.Clear();
+                existingProvisioning = await _context.ZoomUserProvisionings
+                    .AsNoTracking()
+                    .Include(x => x.ZoomStatus)
+                    .FirstOrDefaultAsync(x => x.EmailNormalized == emailKey, cancellationToken);
+
+                if (existingProvisioning != null)
+                {
+                    return new ZoomAccountStatusResult
+                    {
+                        Success = true,
+                        Code = ZoomProvisioningResultCodes.StatusFetched,
+                        Message = "Provisioning durumu baska bir istek tarafindan guncellendi. Guncel kayit yuklendi.",
+                        UserProvisioningId = existingProvisioning.UserProvisioningId,
+                        Email = existingProvisioning.Email,
+                        StatusName = existingProvisioning.ZoomStatus?.Name ?? ResolveStatusName(existingProvisioning.ZoomStatusId),
+                        ExistsInLocalProvisioning = true,
+                        ExistsInZoomWorkspace =
+                            existingProvisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.Active
+                            || existingProvisioning.ZoomStatusId == (byte)ZoomProvisioningStatus.ActivationPending
+                            || !string.IsNullOrWhiteSpace(existingProvisioning.ZoomUserId),
+                        ZoomUserId = existingProvisioning.ZoomUserId ?? string.Empty,
+                        LastSyncedAtUtc = existingProvisioning.LastSyncedAt
+                    };
+                }
+
+                return AccountStatusFailure(
+                    ZoomProvisioningResultCodes.UnexpectedError,
+                    "Zoom provisioning kaydi eszamanli guncellendi. Lutfen tekrar deneyin.");
+            }
 
             _logger.LogInformation(
                 "Zoom account status synced for {Email}. LocalStatus={Status}, Http={Http}",
@@ -1570,6 +1611,16 @@ namespace Toplanti.Business.Concrete
             {
                 return false;
             }
+        }
+
+        private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+        {
+            if (exception?.InnerException is not SqlException sqlException)
+            {
+                return false;
+            }
+
+            return sqlException.Number == 2601 || sqlException.Number == 2627;
         }
 
         private static string NormalizeEmail(string email)

@@ -196,5 +196,104 @@ namespace Toplanti.IntegrationTests.Controllers
             Assert.True(json.RootElement.GetProperty("Success").GetBoolean());
             Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("Data").GetProperty("Token").GetString()));
         }
+
+        [Fact]
+        public async Task Login_ShouldTriggerAutoProvision_WhenCorporateLdapUserHasNoZoomAccount()
+        {
+            using var context = TestDbContextFactory.CreateContext();
+            var userId = Guid.NewGuid();
+            var email = "autoprov.ldap.test@yee.org.tr";
+            context.AuthUsers.Add(new AuthUser
+            {
+                UserId = userId,
+                Email = email,
+                EmailNormalized = email.ToUpperInvariant(),
+                Department = "Bilisim",
+                DisplayName = "Ldap Test",
+                IsInternal = true,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+
+            var authService = new MockAuthenticationService
+            {
+                AuthenticateLdapHandler = _ => new AuthenticationResult
+                {
+                    Success = true,
+                    Code = AuthenticationResultCodes.LdapAuthenticated,
+                    Message = "ok",
+                    UserId = userId,
+                    Email = email,
+                    IsInternal = true
+                }
+            };
+
+            var checkStatusCallCount = 0;
+            var provisionCallCount = 0;
+            Toplanti.Entities.DTOs.ZoomProvisioning.ProvisionZoomUserRequest? capturedProvisionRequest = null;
+
+            var zoomProvisioningService = new MockZoomProvisioningService
+            {
+                CheckStatusHandler = _ =>
+                {
+                    checkStatusCallCount++;
+                    return new Toplanti.Entities.DTOs.ZoomProvisioning.ZoomAccountStatusResult
+                    {
+                        Success = true,
+                        Code = "ZOOM_STATUS_FETCHED",
+                        Message = "no account",
+                        StatusName = "None"
+                    };
+                },
+                ProvisionUserHandler = request =>
+                {
+                    provisionCallCount++;
+                    capturedProvisionRequest = request;
+                    return new Toplanti.Entities.DTOs.ZoomProvisioning.ZoomProvisionUserResult
+                    {
+                        Success = true,
+                        Code = "ZOOM_PROVISIONING_STARTED",
+                        Message = "provision started",
+                        StatusName = "ActivationPending"
+                    };
+                }
+            };
+
+            var config = TestConfigurationFactory.Create(
+                ("TokenOptions:Issuer", "yee-toplanti"),
+                ("TokenOptions:Audience", "yee-toplanti"),
+                ("TokenOptions:SecurityKey", "UnitTest_ThisKeyMustBeLongEnough_ForJwtSigning_123456"),
+                ("TokenOptions:AccessTokenExpiration", "60"),
+                ("AuthFlow:CorporateDomain", "yee.org.tr"),
+                ("AuthFlow:CorporateUserType", "1"),
+                ("AuthFlow:BilisimUserType", "2"),
+                ("AuthFlow:ExternalUserType", "1"));
+
+            var sut = new AuthController(authService, zoomProvisioningService, context, config)
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext()
+                }
+            };
+
+            var actionResult = await sut.Login(new AuthController.LoginRequest
+            {
+                UsernameOrEmail = email,
+                Password = "any"
+            }, CancellationToken.None);
+
+            var ok = Assert.IsType<OkObjectResult>(actionResult);
+            var json = JsonDocument.Parse(JsonSerializer.Serialize(ok.Value));
+
+            Assert.False(json.RootElement.GetProperty("Success").GetBoolean());
+            Assert.Equal(AuthFlowCodes.ZoomActivationPending, json.RootElement.GetProperty("ErrorCode").GetString());
+            Assert.Equal(1, checkStatusCallCount);
+            Assert.Equal(1, provisionCallCount);
+            Assert.NotNull(capturedProvisionRequest);
+            Assert.Equal(email, capturedProvisionRequest!.Email);
+            Assert.Equal(2, capturedProvisionRequest.UserType);
+        }
     }
 }
